@@ -1,12 +1,11 @@
-/* Panel „Wygląd” — motywy, kolory, układ, czcionki. */
+/* Panel „Wygląd” — uproszczony wybór motywu, układu i wielkości tekstu. */
 
 import { t, type I18nKey } from '../i18n';
-import { DEFAULTS, settings, update, type ThemeName } from '../state';
+import { settings, update, type ThemeName } from '../state';
 import { THEME_PREVIEW } from '../themes';
-import { group, h, icon, rowColor, rowRange, rowSelect, rowSwitch } from '../ui';
-import { MONO_FONTS } from '../themes';
+import { group, h, icon, rowColor, rowRange } from '../ui';
 
-const THEMES: Array<Exclude<ThemeName, 'custom'>> = ['light', 'gray', 'dark', 'black'];
+const THEMES: Array<Exclude<ThemeName, 'custom'>> = ['light', 'dark', 'gray', 'black'];
 
 export function appearancePanel(apply: () => void, rerender: () => void) {
   return (body: HTMLElement): void => {
@@ -19,31 +18,17 @@ export function appearancePanel(apply: () => void, rerender: () => void) {
     /* ---------------- własne kolory ---------------- */
     if (settings.theme === 'custom') {
       const colors = h('div', {});
-      colors.append(h('div', { class: 'hint-box', text: t('app.customHint') }));
       const set = (key: keyof typeof settings.custom) => (v: string) => {
         update({ custom: { ...settings.custom, [key]: v } });
         apply();
       };
-      colors.append(rowColor(t('app.color.bg'), settings.custom.bg, set('bg')));
-      colors.append(rowColor(t('app.color.panel'), settings.custom.panel, set('panel')));
+      colors.append(rowColor(t('app.color.bg'), settings.custom.bg, (v) => {
+        update({ custom: { ...settings.custom, bg: v, panel: v } });
+        apply();
+      }));
       colors.append(rowColor(t('app.color.editor'), settings.custom.editor, set('editor')));
       colors.append(rowColor(t('app.color.text'), settings.custom.text, set('text')));
       colors.append(rowColor(t('app.color.accent'), settings.custom.accent, set('accent')));
-      colors.append(
-        rowSelect(
-          t('app.color.base'),
-          undefined,
-          [
-            { value: 'dark', label: t('app.base.dark') },
-            { value: 'light', label: t('app.base.light') },
-          ],
-          settings.custom.base === 'light' ? 'light' : 'dark',
-          (v) => {
-            update({ custom: { ...settings.custom, base: v as 'dark' | 'light' } });
-            apply();
-          },
-        ),
-      );
       body.append(group(t('app.customColors'), colors));
     }
 
@@ -53,66 +38,26 @@ export function appearancePanel(apply: () => void, rerender: () => void) {
       layoutCard('row', 'layout-h', t('app.layout.row'), apply, rerender),
       layoutCard('column', 'layout-v', t('app.layout.column'), apply, rerender),
     );
-    body.append(
-      group(
-        t('app.layout'),
-        layout,
-        rowSwitch(t('app.swap'), t('app.swapDesc'), settings.swapped, (v) => {
-          update({ swapped: v });
-          apply();
-        }),
-      ),
-    );
+    body.append(group(t('app.layout'), layout));
 
-    /* ---------------- czcionki ---------------- */
+    /* ---------------- rozmiar tekstu ---------------- */
     body.append(
       group(
-        t('app.font'),
-        rowRange(t('app.fontSize'), undefined, 11, 24, 1, settings.fontSize, (v) => {
-          update({ fontSize: v });
-          apply();
-        }, (v) => `${v} px`),
-        rowRange(t('app.outFontSize'), undefined, 11, 22, 1, settings.outFontSize, (v) => {
-          update({ outFontSize: v });
-          apply();
-        }, (v) => `${v} px`),
-        rowSelect(
-          t('app.font'),
+        t('app.textSize'),
+        rowRange(
+          t('app.textSize'),
           undefined,
-          MONO_FONTS.map((f) => ({ value: f.id, label: f.label || t('app.font.default') })),
-          settings.monoFont,
+          12,
+          22,
+          1,
+          settings.fontSize,
           (v) => {
-            update({ monoFont: v });
+            update({ fontSize: v, outFontSize: Math.max(11, v - 1) });
             apply();
           },
+          (v) => `${v} px`,
         ),
-        rowSwitch(t('app.anim'), t('app.animDesc'), settings.animations, (v) => {
-          update({ animations: v });
-          apply();
-        }),
       ),
-    );
-
-    body.append(
-      h('button', {
-        class: 'btn btn-ghost btn-block',
-        text: t('app.resetLook'),
-        onclick: () => {
-          update({
-            theme: DEFAULTS.theme,
-            custom: { ...DEFAULTS.custom },
-            layout: DEFAULTS.layout,
-            swapped: DEFAULTS.swapped,
-            fontSize: DEFAULTS.fontSize,
-            outFontSize: DEFAULTS.outFontSize,
-            monoFont: DEFAULTS.monoFont,
-            animations: DEFAULTS.animations,
-            splitRatio: DEFAULTS.splitRatio,
-          });
-          apply();
-          rerender();
-        },
-      }),
     );
   };
 }

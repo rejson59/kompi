@@ -1,9 +1,13 @@
-/* Edytor kodu (CodeMirror 6) — motyw oparty o zmienne CSS,
-   autouzupełnianie, podpowiedzi po najechaniu myszką i podkreślanie błędów. */
+/* Edytor kodu (CodeMirror 6):
+   - Podczas pisania cały kod ma jednolity, spokojny biały kolor (bez tęczowego kolorowania składni),
+   - Po kliknięciu „Uruchom” Kompi podświetla poprawne linie na zielono, a błędne na czerwono,
+   - Gdy użytkownik zacznie pisać/poprawiać kod, kolory sprawdzania znikają i kod znów jest biały. */
 
-import { EditorState, Compartment, type Extension } from '@codemirror/state';
+import { EditorState, Compartment, StateEffect, StateField, RangeSetBuilder, type Extension } from '@codemirror/state';
 import {
   EditorView,
+  Decoration,
+  type DecorationSet,
   keymap,
   lineNumbers,
   highlightActiveLine,
@@ -20,8 +24,6 @@ import {
   bracketMatching,
   indentOnInput,
   indentUnit,
-  syntaxHighlighting,
-  HighlightStyle,
   foldGutter,
   foldKeymap,
 } from '@codemirror/language';
@@ -29,7 +31,6 @@ import { cpp } from '@codemirror/lang-cpp';
 import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap, acceptCompletion, completionStatus } from '@codemirror/autocomplete';
 import { searchKeymap, highlightSelectionMatches, search } from '@codemirror/search';
 import { lintGutter, setDiagnostics, type Diagnostic } from '@codemirror/lint';
-import { tags as tg } from '@lezer/highlight';
 
 import { settings } from './state';
 import { cppCompletionSource } from './completions';
@@ -37,50 +38,87 @@ import { TOKEN_INDEX } from './glossary';
 import { t } from './i18n';
 import { luminance } from './themes';
 
-const kompiHighlight = HighlightStyle.define([
-  { tag: [tg.keyword, tg.controlKeyword, tg.operatorKeyword, tg.modifier, tg.self], color: 'var(--syn-key)' },
-  { tag: [tg.typeName, tg.className, tg.standard(tg.typeName), tg.namespace], color: 'var(--syn-type)' },
-  { tag: [tg.string, tg.special(tg.string), tg.character], color: 'var(--syn-str)' },
-  { tag: [tg.number, tg.bool, tg.atom, tg.literal], color: 'var(--syn-num)' },
-  { tag: [tg.comment, tg.lineComment, tg.blockComment, tg.docComment], color: 'var(--syn-com)', fontStyle: 'italic' },
-  { tag: [tg.function(tg.variableName), tg.function(tg.propertyName), tg.labelName], color: 'var(--syn-fn)' },
-  { tag: [tg.processingInstruction, tg.meta, tg.macroName], color: 'var(--syn-pre)' },
-  { tag: [tg.operator, tg.punctuation, tg.separator, tg.bracket], color: 'var(--syn-op)' },
-  { tag: [tg.variableName, tg.propertyName, tg.definition(tg.variableName)], color: 'var(--syn-var)' },
-  { tag: tg.invalid, color: 'var(--danger)' },
-]);
+/* -------- Dekoracje linii po sprawdzeniu przez Kompiego (zielone / czerwone) -------- */
+const setLineReviewEffect = StateEffect.define<{ goodLines: number[]; badLines: number[] } | null>();
+
+const okLineDeco = Decoration.line({ class: 'cm-line-ok' });
+const badLineDeco = Decoration.line({ class: 'cm-line-bad' });
+
+const lineReviewField = StateField.define<DecorationSet>({
+  create() {
+    return Decoration.none;
+  },
+  update(decos, tr) {
+    // Gdy użytkownik zaczyna pisać/edytować kod, wracamy do czystego białego tekstu
+    if (tr.docChanged) {
+      return Decoration.none;
+    }
+    for (const ef of tr.effects) {
+      if (ef.is(setLineReviewEffect)) {
+        if (!ef.value) return Decoration.none;
+        const { goodLines, badLines } = ef.value;
+        const goodSet = new Set(goodLines);
+        const badSet = new Set(badLines);
+        const builder = new RangeSetBuilder<Decoration>();
+        const maxLines = tr.state.doc.lines;
+        for (let lineNo = 1; lineNo <= maxLines; lineNo++) {
+          if (badSet.has(lineNo)) {
+            const line = tr.state.doc.line(lineNo);
+            builder.add(line.from, line.from, badLineDeco);
+          } else if (goodSet.has(lineNo)) {
+            const line = tr.state.doc.line(lineNo);
+            builder.add(line.from, line.from, okLineDeco);
+          }
+        }
+        return builder.finish();
+      }
+    }
+    return decos;
+  },
+  provide: (f) => EditorView.decorations.from(f),
+});
 
 function baseTheme(dark: boolean): Extension {
   return EditorView.theme(
     {
-      '&': { backgroundColor: 'var(--ed-bg)', color: 'var(--ed-text)', height: '100%' },
-      '.cm-content': { caretColor: 'var(--ed-cursor)', padding: '10px 0' },
+      '&': { backgroundColor: 'transparent', color: 'var(--ed-text)', height: '100%' },
+      '.cm-content': { caretColor: 'var(--ed-cursor)', padding: '12px 0', color: 'var(--ed-text)' },
+      '.cm-line': { color: 'var(--ed-text)' },
       '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--ed-cursor)', borderLeftWidth: '2px' },
       '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {
         backgroundColor: 'var(--ed-selection)',
       },
       '.cm-gutters': {
-        backgroundColor: 'var(--ed-gutter-bg)',
+        backgroundColor: 'transparent',
         color: 'var(--ed-gutter-text)',
         border: 'none',
         borderRight: '1px solid var(--border-soft)',
       },
-      '.cm-activeLineGutter': { backgroundColor: 'var(--ed-active-line)', color: 'var(--text-dim)' },
+      '.cm-activeLineGutter': { backgroundColor: 'var(--ed-active-line)', color: 'var(--accent)' },
       '.cm-activeLine': { backgroundColor: 'var(--ed-active-line)' },
       '.cm-matchingBracket, &.cm-focused .cm-matchingBracket': {
         backgroundColor: 'var(--ed-bracket)',
+        color: 'var(--ed-text)',
         outline: 'none',
-        borderRadius: '3px',
+        borderRadius: '4px',
       },
       '.cm-selectionMatch': { backgroundColor: 'var(--accent-soft)' },
-      '.cm-lineNumbers .cm-gutterElement': { padding: '0 8px 0 12px' },
+      '.cm-lineNumbers .cm-gutterElement': { padding: '0 10px 0 14px' },
       '.cm-foldGutter .cm-gutterElement': { opacity: 0.6 },
-      '.cm-panels': { backgroundColor: 'var(--panel-2)', color: 'var(--text)' },
+      '.cm-panels': { backgroundColor: 'var(--panel)', color: 'var(--text)', borderBottom: '1px solid var(--border-soft)' },
+      '.cm-panel.cm-search': { padding: '8px 12px' },
       '.cm-panel.cm-search input, .cm-panel.cm-search button': {
-        backgroundColor: 'var(--panel-3)',
+        backgroundColor: 'var(--bg)',
         color: 'var(--text)',
-        border: '1px solid var(--border)',
-        borderRadius: '6px',
+        border: 'none',
+        borderRadius: '8px',
+        boxShadow: 'var(--neu-inset-sm)',
+        padding: '4px 10px',
+      },
+      '.cm-panel.cm-search button': {
+        background: 'var(--surface-grad)',
+        boxShadow: 'var(--neu-raised-xs)',
+        cursor: 'pointer',
       },
       '.cm-tooltip': { border: 'none' },
       '.cm-scroller': { overflow: 'auto' },
@@ -189,7 +227,7 @@ export function createEditor(parent: HTMLElement, doc: string, hooks: EditorHook
       highlightSelectionMatches(),
       search({ top: true }),
       lintGutter(),
-      syntaxHighlighting(kompiHighlight, { fallback: true }),
+      lineReviewField,
       cpp(),
       cCompletion.of(completionExt()),
       cHover.of(settings.hovers ? hoverExtension() : []),
@@ -284,8 +322,18 @@ export function showIssues(view: EditorView, issues: CompileIssue[]): void {
   view.dispatch(setDiagnostics(view.state, diags));
 }
 
+/** Koloruje linie w edytorze po kliknięciu „Uruchom”: zielone = poprawne, czerwone = błędne. */
+export function showLineReview(view: EditorView, goodLines: number[], badLines: number[]): void {
+  view.dispatch({
+    effects: setLineReviewEffect.of({ goodLines, badLines }),
+  });
+}
+
 export function clearIssues(view: EditorView): void {
-  view.dispatch(setDiagnostics(view.state, []));
+  view.dispatch({
+    ...setDiagnostics(view.state, []),
+    effects: setLineReviewEffect.of(null),
+  });
 }
 
 export function goToLine(view: EditorView, line: number): void {

@@ -53,7 +53,7 @@ export const STDIN_KEY = 'kompi.stdin.v1';
 export const DEFAULTS: Settings = {
   lang: (navigator.language || 'pl').toLowerCase().startsWith('pl') ? 'pl' : 'en',
   theme: 'dark',
-  custom: { base: 'dark', bg: '#101317', panel: '#181c23', editor: '#0e1116', text: '#e8ecf3', accent: '#7c5cff' },
+  custom: { base: 'dark', bg: '#222731', panel: '#222731', editor: '#1c2029', text: '#e8ecf3', accent: '#7c5cff' },
   layout: 'row',
   swapped: false,
   splitRatio: 0.6,
@@ -147,3 +147,185 @@ export function loadStdin(): string {
     return '';
   }
 }
+
+/* ------- auto-zapis i lista ostatnio pisanych kodów w przeglądarce ------- */
+const SAVED_CODES_KEY = 'kompi.savedCodes.v1';
+const ACTIVE_CODE_ID_KEY = 'kompi.activeCodeId.v1';
+const MAX_SAVED_CODES = 30;
+
+export interface SavedCodeItem {
+  id: string;
+  title: string;
+  code: string;
+  updatedAt: number;
+}
+
+export function loadSavedCodes(): SavedCodeItem[] {
+  try {
+    const raw = localStorage.getItem(SAVED_CODES_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeSavedCodes(list: SavedCodeItem[]): void {
+  try {
+    localStorage.setItem(SAVED_CODES_KEY, JSON.stringify(list.slice(0, MAX_SAVED_CODES)));
+  } catch {
+    /* ignorujemy */
+  }
+}
+
+export function getActiveCodeId(): string | null {
+  try {
+    return localStorage.getItem(ACTIVE_CODE_ID_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setActiveCodeId(id: string): void {
+  try {
+    localStorage.setItem(ACTIVE_CODE_ID_KEY, id);
+  } catch {
+    /* ignorujemy */
+  }
+}
+
+export function normalizeCppTitle(raw: string, fallback = 'przyklad.cpp'): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return fallback;
+  return trimmed;
+}
+
+/** Zwraca aktualnie edytowany kod z historii (lub tworzy pierwszy wpis np. przyklad.cpp). */
+export function ensureActiveCodeItem(initialCode: string): SavedCodeItem {
+  const list = loadSavedCodes();
+  let migrated = false;
+  for (const it of list) {
+    if (it.title === 'powitanie.cpp' || it.title === 'welcome.cpp') {
+      it.title = settings.lang === 'pl' ? 'przyklad.cpp' : 'example.cpp';
+      migrated = true;
+    }
+  }
+  if (migrated) writeSavedCodes(list);
+
+  const activeId = getActiveCodeId();
+
+  if (activeId) {
+    const found = list.find((it) => it.id === activeId);
+    if (found) return found;
+  }
+
+  if (list.length > 0) {
+    setActiveCodeId(list[0].id);
+    return list[0];
+  }
+
+  const first: SavedCodeItem = {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    title: settings.lang === 'pl' ? 'przyklad.cpp' : 'example.cpp',
+    code: initialCode,
+    updatedAt: Date.now(),
+  };
+  writeSavedCodes([first]);
+  setActiveCodeId(first.id);
+  return first;
+}
+
+/** Automatycznie zapisuje bieżący kod i tytuł w przeglądarce. */
+export function autoSaveActiveCode(code: string, title?: string): SavedCodeItem {
+  const list = loadSavedCodes();
+  const activeId = getActiveCodeId();
+  const now = Date.now();
+
+  const idx = activeId ? list.findIndex((it) => it.id === activeId) : -1;
+  if (idx !== -1) {
+    const existing = list[idx];
+    const updated: SavedCodeItem = {
+      ...existing,
+      code,
+      title: title !== undefined ? normalizeCppTitle(title, existing.title) : existing.title,
+      updatedAt: now,
+    };
+    list.splice(idx, 1);
+    list.unshift(updated);
+    writeSavedCodes(list);
+    return updated;
+  }
+
+  const created: SavedCodeItem = {
+    id: `${now}-${Math.random().toString(36).slice(2, 7)}`,
+    title: normalizeCppTitle(title ?? '', settings.lang === 'pl' ? 'przyklad.cpp' : 'example.cpp'),
+    code,
+    updatedAt: now,
+  };
+  list.unshift(created);
+  writeSavedCodes(list);
+  setActiveCodeId(created.id);
+  return created;
+}
+
+/** Zmienia tytuł wybranego kodu (np. na nowy1.cpp). */
+export function renameSavedCode(id: string, newTitle: string): string {
+  const list = loadSavedCodes();
+  const item = list.find((it) => it.id === id);
+  const finalTitle = normalizeCppTitle(newTitle, item?.title || 'przyklad.cpp');
+  if (item) {
+    item.title = finalTitle;
+    item.updatedAt = Date.now();
+    writeSavedCodes(list);
+  }
+  return finalTitle;
+}
+
+/** Tworzy nowy plik w historii (np. nowy1.cpp, nowy2.cpp), zachowując poprzedni na liście. */
+export function createNewSavedCode(templateCode: string): SavedCodeItem {
+  const list = loadSavedCodes();
+  const prefix = settings.lang === 'pl' ? 'nowy' : 'new';
+  const existingTitles = new Set(list.map((it) => it.title.toLowerCase()));
+  let num = 1;
+  while (existingTitles.has(`${prefix}${num}.cpp`) || existingTitles.has(`${prefix}${num}`)) {
+    num++;
+  }
+  const defaultTitle = `${prefix}${num}.cpp`;
+  const item: SavedCodeItem = {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    title: defaultTitle,
+    code: templateCode,
+    updatedAt: Date.now(),
+  };
+  list.unshift(item);
+  writeSavedCodes(list);
+  setActiveCodeId(item.id);
+  return item;
+}
+
+export function deleteSavedCode(id: string): void {
+  const list = loadSavedCodes().filter((item) => item.id !== id);
+  writeSavedCodes(list);
+}
+
+export function clearAllSavedCodes(): void {
+  writeSavedCodes([]);
+}
+
+/** Dodaje wczytany z dysku plik .cpp do listy ostatnich kodów i ustawia go jako aktywny. */
+export function createSavedCodeWithName(title: string, code: string): SavedCodeItem {
+  const list = loadSavedCodes();
+  const cleanTitle = normalizeCppTitle(title, settings.lang === 'pl' ? 'przyklad.cpp' : 'example.cpp');
+  const item: SavedCodeItem = {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    title: cleanTitle,
+    code,
+    updatedAt: Date.now(),
+  };
+  list.unshift(item);
+  writeSavedCodes(list);
+  setActiveCodeId(item.id);
+  return item;
+}
+

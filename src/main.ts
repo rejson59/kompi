@@ -5,18 +5,29 @@ import './style.css';
 
 import { EditorView } from '@codemirror/view';
 import { applyI18n, t } from './i18n';
-import { loadCode, loadStdin, settings, storeCode, update, type Lang } from './state';
+import {
+  autoSaveActiveCode,
+  createSavedCodeWithName,
+  ensureActiveCodeItem,
+  loadCode,
+  normalizeCppTitle,
+  settings,
+  storeCode,
+  update,
+} from './state';
 import { applyTheme } from './themes';
-import { clearIssues, createEditor, goToLine, insertAtCursor, refreshEditor, setCode, showIssues, type EditorHooks } from './editor';
-import { DEFAULT_CODE, EXAMPLES } from './examples';
+import { clearIssues, createEditor, goToLine, insertAtCursor, refreshEditor, setCode, showIssues, showLineReview, type EditorHooks } from './editor';
+import { DEFAULT_CODE } from './examples';
 import { runProgram, type RunResult } from './engines';
-import { friendlyHints, looksLikeMissingInput, parseIssues, runtimeHint } from './errors';
+import { analyzeCodeWithKompi, runtimeHint, type KompiCodeReview } from './errors';
 import { readFromHash, type SharePayload } from './share';
-import { closeDrawer, closeModal, copyText, currentDrawer, h, icon, isModalOpen, openDrawer, rerenderDrawer, toast } from './ui';
+import { closeDrawer, closeModal, currentDrawer, h, icon, isModalOpen, openDrawer, rerenderDrawer, toast } from './ui';
 import { glossaryPanel } from './panels/glossary';
 import { appearancePanel } from './panels/appearance';
 import { settingsPanel } from './panels/settings';
 import { openShareModal } from './panels/share';
+import { openSavedCodesModal } from './panels/saved';
+import { closeTutorial, isTutorialOpen, kompiMascotSvg, maybeAutoStartTutorial, rerenderTutorialIfOpen, startTutorial } from './mascot';
 
 /* ----------------------------- elementy DOM ----------------------------- */
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -25,18 +36,12 @@ const splitEl = $('split');
 const paneEditor = $('pane-editor');
 const splitter = $('splitter');
 const outputEl = $('output');
-const stdinEl = $<HTMLTextAreaElement>('stdin');
 const runBtn = $<HTMLButtonElement>('btn-run');
 const stopBtn = $<HTMLButtonElement>('btn-stop');
 const runStatus = $('run-status');
-const engineLabel = $('engine-label');
-const cursorPos = $('cursor-pos');
-const codeStats = $('code-stats');
-const dirtyDot = $('dirty-dot');
-const stdinBadge = $('stdin-badge');
+const titleInput = $<HTMLInputElement>('code-title-input');
 const banner = $('shared-banner');
 const bannerText = $('shared-banner-text');
-const examplesSel = $<HTMLSelectElement>('examples');
 
 let view: EditorView;
 let running = false;
@@ -100,41 +105,40 @@ async function run(): Promise<void> {
     return;
   }
 
-  showTab('out');
+  // Automatyczny zapis bieżącego kodu i tytułu w przeglądarce
+  autoSaveActiveCode(code, titleInput.value);
+  storeCode(code, '');
+
   if (settings.clearBeforeRun) clearOutput();
   clearIssues(view);
   setRunning(true);
-  setStatus(t('run.compiling'));
+  setStatus('');
 
-  const spinner = outSpinner(t('run.compiling'));
+  let spinner = null as HTMLElement | null;
+  const spinnerTimer = window.setTimeout(() => {
+    spinner = outSpinner(t('run.running'));
+  }, 180);
+
   controller = new AbortController();
 
   try {
-    const result = await runProgram(
-      {
-        code,
-        stdin: stdinEl.value,
-        std: settings.std,
-        timeoutMs: settings.timeoutSec * 1000,
-        signal: controller.signal,
-      },
-      {
-        onProgress: (msg) => {
-          spinner.querySelector('span:last-child')!.textContent = msg;
-        },
-        onEngineFailed: (name) => outSys(t('run.engineFailed', { engine: name }), 'out-sys out-warn'),
-      },
-    );
-    spinner.remove();
-    renderResult(result, code);
+    const result = await runProgram({
+      code,
+      stdin: '',
+      std: settings.std,
+      timeoutMs: settings.timeoutSec * 1000,
+      signal: controller.signal,
+    });
+    window.clearTimeout(spinnerTimer);
+    if (spinner) spinner.remove();
+    renderResult(result);
   } catch (err) {
-    spinner.remove();
+    window.clearTimeout(spinnerTimer);
+    if (spinner) spinner.remove();
     if (err instanceof DOMException && err.name === 'AbortError') {
       outSys(t('run.stopped'));
       setStatus(t('run.stopped'));
     } else {
-      const detail = err instanceof Error ? err.message : String(err);
-      outBlock(t('err.title'), `${escapeHtml(t('run.noEngines'))}<br><span class="out-dim">${escapeHtml(detail)}</span>`, 'err');
       setStatus('✕', 'err');
     }
   } finally {
@@ -143,38 +147,109 @@ async function run(): Promise<void> {
   }
 }
 
-function renderResult(r: RunResult, code: string): void {
-  engineLabel.textContent = `${t('foot.engine')}: ${r.engineLabel}`;
+function renderKompiReview(review: KompiCodeReview): void {
+  const isPl = settings.lang === 'pl';
 
-  /* --- komunikaty kompilatora --- */
-  const issues = parseIssues(r.compileOutput);
-  if (r.compileOutput.trim()) {
-    outSys(t('out.compilerMsg'), 'out-sys');
-    if (issues.length) {
-      for (const it of issues) {
-        const line = h(
-          'div',
-          { class: it.severity === 'error' ? 'out-err' : 'out-warn' },
-          h('span', {
-            class: 'out-err-link',
-            text: `${t('err.line', { line: it.line })}`,
-            onclick: () => goToLine(view, it.line),
-          }),
-          h('span', { text: `  ${it.message}` }),
-        );
-        outputEl.append(line);
-      }
-    } else {
-      outText(`${r.compileOutput.trim()}\n`, r.compileFailed ? 'out-err' : 'out-warn');
-    }
-    if (issues.length) showIssues(view, issues);
+  if (review.ok) {
+    const okCard = h(
+      'div',
+      { class: 'kompi-review-card is-ok' },
+      h('div', { class: 'kompi-review-avatar-wrap' }, kompiMascotSvg('happy', 'kompi-review-svg-sm')),
+      h(
+        'div',
+        { class: 'kompi-review-body' },
+        h('div', {
+          class: 'kompi-review-title',
+          text: isPl
+            ? 'Kompi sprawdził kod: wszystko napisane poprawnie!'
+            : 'Kompi checked your code: everything looks right!',
+        }),
+      ),
+    );
+    outputEl.append(okCard);
+    return;
   }
+
+  const listEl = h('div', { class: 'kompi-issue-list' });
+  for (const item of review.issues) {
+    const row = h(
+      'div',
+      {
+        class: 'kompi-issue-item',
+        onclick: () => goToLine(view, item.line),
+        title: isPl ? 'Kliknij, aby przejść do tej linii' : 'Click to jump to this line',
+      },
+      h(
+        'div',
+        { class: 'kompi-issue-top' },
+        h('span', { class: 'kompi-issue-badge', text: t('err.line', { line: item.line }) }),
+        item.codeSnippet
+          ? h('code', { class: 'kompi-issue-code', text: item.codeSnippet })
+          : null,
+      ),
+      h('div', { class: 'kompi-issue-exp', html: item.explanation }),
+    );
+    listEl.append(row);
+  }
+
+  const legendEl = h(
+    'div',
+    { class: 'kompi-review-legend' },
+    h('span', { class: 'legend-pill is-ok', text: isPl ? 'Zielony = poprawne' : 'Green = correct' }),
+    h('span', { class: 'legend-pill is-bad', text: isPl ? 'Czerwony = do poprawy' : 'Red = needs fix' }),
+  );
+
+  const badCard = h(
+    'div',
+    { class: 'kompi-review-card is-bad' },
+    h('div', { class: 'kompi-review-head' },
+      h('div', { class: 'kompi-review-avatar-wrap' }, kompiMascotSvg('help', 'kompi-review-svg')),
+      h(
+        'div',
+        { class: 'kompi-review-head-text' },
+        h('div', {
+          class: 'kompi-review-title',
+          text: isPl
+            ? 'Kompi sprawdził Twój kod — zobacz, co poszło nie tak:'
+            : 'Kompi checked your code — here’s what went wrong:',
+        }),
+        legendEl,
+      ),
+    ),
+    listEl,
+  );
+
+  outputEl.append(badCard);
+}
+
+function stripHtmlTags(s: string): string {
+  return s.replace(/<[^>]*>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+}
+
+function renderResult(r: RunResult): void {
+  const code = view.state.doc.toString();
+  const review = analyzeCodeWithKompi(code, r.compileOutput, r.compileFailed);
+
+  /* Podświetl w edytorze poprawne linie na zielono, a błędne na czerwono */
+  showLineReview(view, review.goodLines, review.badLines);
+
+  if (!review.ok) {
+    showIssues(
+      view,
+      review.issues.map((it) => ({
+        line: it.line,
+        col: 1,
+        severity: 'error',
+        message: stripHtmlTags(it.explanation),
+      })),
+    );
+  }
+
+  /* Pokaż wyjaśnienie Kompiego z boku (w panelu Wyjście) */
+  renderKompiReview(review);
 
   /* --- błąd kompilacji --- */
   if (r.compileFailed) {
-    const hints = friendlyHints(r.compileOutput);
-    if (hints.length) outBlock(t('tip.title'), hints.map((x) => `• ${x}`).join('<br>'));
-    if (r.note) outSys(r.note);
     setStatus(t('status.compileFailed'), 'err');
     return;
   }
@@ -191,10 +266,6 @@ function renderResult(r: RunResult, code: string): void {
   if (r.stderr) outText(r.stderr.endsWith('\n') ? r.stderr : `${r.stderr}\n`, 'out-err');
   if (!r.stdout && !r.stderr) outSys(t('out.noOutput'));
 
-  if (looksLikeMissingInput(code, stdinEl.value, r.stdout)) {
-    outBlock(t('tip.title'), escapeHtml(t('run.waitingInput')));
-  }
-
   const hint = runtimeHint(r.exitCode, r.signalName, r.stderr);
   if (hint && r.exitCode !== 0) outBlock(t('tip.title'), hint);
 
@@ -206,7 +277,6 @@ function renderResult(r: RunResult, code: string): void {
     outSys(`${t('status.exitBad', { code: r.exitCode })} · ${t('status.time', { t: time })}`, 'out-sys out-warn');
     setStatus(`✕ ${t('status.exitBad', { code: r.exitCode })}`, 'err');
   }
-  if (r.note && r.engine === 'offline') outSys(r.note);
 }
 
 /* -------------------------------- układ --------------------------------- */
@@ -249,28 +319,14 @@ function initSplitter(): void {
   });
 }
 
-/* -------------------------------- zakładki ------------------------------- */
-function showTab(id: 'out' | 'in'): void {
-  document.querySelectorAll<HTMLElement>('.tab').forEach((b) => b.classList.toggle('is-active', b.dataset.tab === id));
-  $('tab-out').classList.toggle('is-hidden', id !== 'out');
-  $('tab-in').classList.toggle('is-hidden', id !== 'in');
-  if (id === 'in') stdinEl.focus();
-}
-
-function updateStdinBadge(): void {
-  const lines = stdinEl.value.trim() ? stdinEl.value.trim().split('\n').length : 0;
-  stdinBadge.textContent = String(lines);
-  stdinBadge.classList.toggle('is-hidden', lines === 0);
-}
-
 /* ------------------------------- zapisy ---------------------------------- */
 function scheduleSave(): void {
-  dirtyDot.classList.add('is-on');
   window.clearTimeout(saveTimer);
   saveTimer = window.setTimeout(() => {
-    storeCode(view.state.doc.toString(), stdinEl.value);
-    dirtyDot.classList.remove('is-on');
-  }, 500);
+    const code = view.state.doc.toString();
+    storeCode(code, '');
+    autoSaveActiveCode(code, titleInput.value);
+  }, 400);
 }
 
 /* ------------------------------- panele ---------------------------------- */
@@ -300,37 +356,10 @@ function openSettings(): void {
       applyTheme();
       applyLayout();
       refreshEditor(view, editorHooks);
-      refreshLangToggle();
-      fillExamples();
+      rerenderTutorialIfOpen();
     },
     rerender: () => rerenderDrawer(t('set.title')),
   }));
-}
-
-/* ------------------------------- język ----------------------------------- */
-function refreshLangToggle(): void {
-  document.querySelectorAll<HTMLElement>('#lang-toggle button').forEach((b) => {
-    b.classList.toggle('is-active', b.dataset.lang === settings.lang);
-  });
-}
-
-function setLang(lang: Lang): void {
-  update({ lang });
-  applyI18n();
-  refreshLangToggle();
-  fillExamples();
-  const open = currentDrawer();
-  if (open === 'glossary') rerenderDrawer(t('gloss.title'));
-  else if (open === 'appearance') rerenderDrawer(t('app.title'));
-  else if (open === 'settings') rerenderDrawer(t('set.title'));
-  if (!running) setStatus('');
-}
-
-/* ------------------------------ przykłady -------------------------------- */
-function fillExamples(): void {
-  examplesSel.innerHTML = '';
-  examplesSel.append(h('option', { value: '', text: t('examples.placeholder') }));
-  for (const ex of EXAMPLES) examplesSel.append(h('option', { value: ex.id, text: ex.title[settings.lang] }));
 }
 
 /* ------------------------- udostępniona praca ---------------------------- */
@@ -351,10 +380,6 @@ async function loadFromHash(initial: boolean): Promise<boolean> {
   const p = found.payload;
   if (myOwnCode === null) myOwnCode = view.state.doc.toString();
   setCode(view, p.c);
-  if (p.i != null) {
-    stdinEl.value = p.i;
-    updateStdinBadge();
-  }
   if (p.s) update({ std: p.s });
   if (p.o) {
     clearOutput();
@@ -371,50 +396,118 @@ const editorHooks: EditorHooks = {
   onChange: () => {
     scheduleSave();
   },
-  onCursor: (line, col, lines) => {
-    cursorPos.textContent = `${line} : ${col}`;
-    codeStats.textContent = `${lines} ${t('foot.lines')}`;
+  onCursor: () => {
+    /* minimalistyczny widok */
   },
   onRun: () => void run(),
-  onSave: () => downloadCode(),
+  onSave: () => {
+    const code = view.state.doc.toString();
+    storeCode(code, '');
+    autoSaveActiveCode(code, titleInput.value);
+  },
 };
-
-function downloadCode(): void {
-  const blob = new Blob([view.state.doc.toString()], { type: 'text/plain;charset=utf-8' });
-  const a = h('a', { href: URL.createObjectURL(blob), download: 'main.cpp' }) as HTMLAnchorElement;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-  toast(t('toast.downloaded'), 'ok');
-}
 
 /* --------------------------------- start --------------------------------- */
 async function boot(): Promise<void> {
+  /* wstawienie maskotki Kompi jako logo w górnym pasku */
+  const mascotSlot = document.getElementById('brand-mascot-slot');
+  if (mascotSlot) {
+    mascotSlot.innerHTML = '';
+    mascotSlot.append(kompiMascotSvg('happy', 'kompi-logo-svg'));
+  }
+
   applyTheme();
   applyI18n();
-  refreshLangToggle();
-  fillExamples();
   applyLayout();
 
-  const saved = loadCode();
-  view = createEditor($('editor'), saved ?? DEFAULT_CODE, editorHooks);
-  stdinEl.value = loadStdin();
-  updateStdinBadge();
-  engineLabel.textContent = `${t('foot.engine')}: ${settings.engine === 'auto' ? 'auto' : settings.engine}`;
+  const savedRaw = loadCode();
+  const activeItem = ensureActiveCodeItem(savedRaw ?? DEFAULT_CODE);
+  titleInput.value = activeItem.title;
+  view = createEditor($('editor'), activeItem.code, editorHooks);
 
   initSplitter();
+
+  /* kliknięcie w logo Kompi uruchamia samouczek */
+  $('btn-brand-kompi').addEventListener('click', () => startTutorial(0));
+
+  /* zmiana tytułu kodu (np. przyklad.cpp) i lista ostatnich kodów */
+  titleInput.addEventListener('change', () => {
+    const clean = normalizeCppTitle(titleInput.value, settings.lang === 'pl' ? 'przyklad.cpp' : 'example.cpp');
+    titleInput.value = clean;
+    autoSaveActiveCode(view.state.doc.toString(), clean);
+  });
+  titleInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      titleInput.blur();
+      view.focus();
+    }
+  });
+
+  const fileUploadInput = $('file-upload-cpp') as HTMLInputElement;
+  const loadCppFile = async (file: File) => {
+    try {
+      const text = await file.text();
+      const item = createSavedCodeWithName(file.name || 'przyklad.cpp', text);
+      titleInput.value = item.title;
+      setCode(view, item.code);
+      storeCode(item.code, '');
+      clearOutput();
+      clearIssues(view);
+      toast(`${t('toast.fileLoaded')}: ${item.title}`, 'ok');
+    } catch {
+      /* ignorujemy błąd odczytu */
+    }
+  };
+
+  $('btn-upload-cpp').addEventListener('click', () => fileUploadInput.click());
+  fileUploadInput.addEventListener('change', () => {
+    const file = fileUploadInput.files?.[0];
+    if (file) void loadCppFile(file);
+    fileUploadInput.value = '';
+  });
+
+  /* obsługa przeciągnięcia pliku .cpp na panel Kod */
+  const editorPane = $('pane-editor');
+  editorPane.addEventListener('dragover', (e) => {
+    e.preventDefault();
+  });
+  editorPane.addEventListener('drop', (e) => {
+    e.preventDefault();
+    const file = e.dataTransfer?.files?.[0];
+    if (file) void loadCppFile(file);
+  });
+
+  $('btn-saved-list').addEventListener('click', () =>
+    openSavedCodesModal({
+      onSelect: (item) => {
+        titleInput.value = item.title;
+        setCode(view, item.code);
+        storeCode(item.code, '');
+        clearOutput();
+        clearIssues(view);
+      },
+      onRenameActive: (newTitle) => {
+        titleInput.value = newTitle;
+      },
+      onUploadClick: () => fileUploadInput.click(),
+    }),
+  );
 
   /* przyciski górnego paska */
   runBtn.addEventListener('click', () => void run());
   stopBtn.addEventListener('click', () => controller?.abort(new DOMException('stopped', 'AbortError')));
   $('btn-share').addEventListener('click', () =>
-    openShareModal(() => ({ code: view.state.doc.toString(), stdin: stdinEl.value, output: outputEl.innerText })),
+    openShareModal(() => ({
+      code: view.state.doc.toString(),
+      title: titleInput.value,
+      stdin: '',
+      output: outputEl.innerText,
+    })),
   );
   $('btn-glossary').addEventListener('click', openGlossary);
   $('btn-appearance').addEventListener('click', openAppearance);
   $('btn-settings').addEventListener('click', openSettings);
-  document.querySelectorAll<HTMLElement>('#lang-toggle button').forEach((b) =>
-    b.addEventListener('click', () => setLang(b.dataset.lang as Lang)),
-  );
 
   /* szuflada / modal */
   $('drawer-close').addEventListener('click', closeDrawer);
@@ -424,56 +517,12 @@ async function boot(): Promise<void> {
     if (e.target === $('modal-scrim')) closeModal();
   });
 
-  /* zakładki wyjścia */
-  document.querySelectorAll<HTMLElement>('.tab').forEach((b) =>
-    b.addEventListener('click', () => showTab(b.dataset.tab as 'out' | 'in')),
-  );
-  stdinEl.addEventListener('input', () => {
-    updateStdinBadge();
-    scheduleSave();
-  });
-
-  $('btn-copy-out').addEventListener('click', async () => {
-    const ok = await copyText(outputEl.innerText);
-    toast(ok ? t('toast.copied') : t('toast.copyFail'), ok ? 'ok' : 'err');
-  });
-  $('btn-clear-out').addEventListener('click', () => {
-    clearOutput();
-    setStatus('');
-    toast(t('toast.outputCleared'));
-  });
-
-  /* pliki */
-  $('btn-download').addEventListener('click', downloadCode);
-  $('btn-upload').addEventListener('click', () => $<HTMLInputElement>('file-input').click());
-  $<HTMLInputElement>('file-input').addEventListener('change', async (e) => {
-    const file = (e.target as HTMLInputElement).files?.[0];
-    if (!file) return;
-    setCode(view, await file.text());
-    toast(`${t('toast.fileLoaded')}: ${file.name}`, 'ok');
-    (e.target as HTMLInputElement).value = '';
-  });
-
-  /* przykłady */
-  examplesSel.addEventListener('change', () => {
-    const ex = EXAMPLES.find((x) => x.id === examplesSel.value);
-    examplesSel.value = '';
-    if (!ex) return;
-    setCode(view, ex.code);
-    stdinEl.value = ex.stdin ?? '';
-    updateStdinBadge();
-    clearIssues(view);
-    toast(`${t('toast.exampleInserted')}: ${ex.title[settings.lang]}`, 'ok');
-  });
-
   /* baner udostępnionej pracy */
   $('shared-banner-close').addEventListener('click', hideBanner);
   $('shared-banner-new').addEventListener('click', () => {
     history.replaceState(null, '', location.pathname);
     setCode(view, myOwnCode ?? DEFAULT_CODE);
     myOwnCode = null;
-    stdinEl.value = '';
-    updateStdinBadge();
     clearOutput();
     hideBanner();
   });
@@ -484,7 +533,8 @@ async function boot(): Promise<void> {
       e.preventDefault();
       void run();
     } else if (e.key === 'Escape') {
-      if (isModalOpen()) closeModal();
+      if (isTutorialOpen()) closeTutorial(true);
+      else if (isModalOpen()) closeModal();
       else if (currentDrawer()) closeDrawer();
     }
   });
@@ -493,7 +543,11 @@ async function boot(): Promise<void> {
 
   /* praca otwarta z linku */
   const loaded = await loadFromHash(true);
-  if (loaded) toast(t('toast.loadedShared'), 'ok');
+  if (loaded) {
+    toast(t('toast.loadedShared'), 'ok');
+  } else {
+    maybeAutoStartTutorial();
+  }
 }
 
 function escapeHtml(s: string): string {
