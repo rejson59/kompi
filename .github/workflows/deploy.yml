@@ -35,8 +35,14 @@ jobs:
         run: npm run build
 
       - uses: actions/configure-pages@v5
-        with:
-          enablement: true # włącza GitHub Pages przy pierwszym uruchomieniu
+        id: pages
+        continue-on-error: true
+
+      - name: Czy Pages jest włączone?
+        if: steps.pages.outcome == 'failure'
+        run: |
+          echo "::error::GitHub Pages nie jest jeszcze włączone. Wejdź w Settings -> Pages, ustaw Source na 'GitHub Actions' i uruchom ten workflow ponownie (Actions -> Deploy na GitHub Pages -> Run workflow)."
+          exit 1
 
       - uses: actions/upload-pages-artifact@v3
         with:
