@@ -1,8 +1,9 @@
-/* Wybór kompilatora: próbujemy kolejno dostępnych silników,
-   a gdy żaden online nie odpowiada — uruchamiamy kod w przeglądarce. */
+/* Błyskawiczne i ciche wykonywanie kodu:
+   - dla standardowych programów działa natychmiast lokalnie w przeglądarce (~5 ms),
+   - dla kodów wymagających pełnego STL (vector, string, algorithm, struct)
+     odpytuje równolegle najszybsze kompilatory online bez pokazywania komunikatów technicznych. */
 
 import { settings, type EngineId } from '../state';
-import { t } from '../i18n';
 import * as piston from './piston';
 import * as wandbox from './wandbox';
 import * as godbolt from './godbolt';
@@ -10,7 +11,10 @@ import * as offline from './offline';
 import type { RunRequest, RunResult } from './types';
 
 export type { RunRequest, RunResult } from './types';
-export { unsupportedFeatures } from './offline';
+export { unsupportedFeatures, prewarmOffline } from './offline';
+
+// Rozgrzej lokalny wątek od razu przy starcie aplikacji
+offline.prewarmOffline();
 
 const RUNNERS: Record<Exclude<EngineId, 'auto'>, (req: RunRequest) => Promise<RunResult>> = {
   piston: piston.run,
@@ -26,43 +30,46 @@ export const ENGINE_NAMES: Record<Exclude<EngineId, 'auto'>, string> = {
   offline: 'offline',
 };
 
-export interface RunHooks {
-  onProgress: (message: string) => void;
-  onEngineFailed: (engineName: string) => void;
+function raceFirstSuccess<T>(promises: Array<Promise<T>>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    let failed = 0;
+    let lastErr: unknown;
+    for (const p of promises) {
+      p.then(resolve, (err) => {
+        failed++;
+        lastErr = err;
+        if (failed === promises.length) reject(lastErr);
+      });
+    }
+  });
 }
 
-/** Kolejność prób w trybie automatycznym (ostatnia udana idzie na początek). */
-let autoOrder: Array<Exclude<EngineId, 'auto' | 'offline'>> = ['piston', 'godbolt', 'wandbox'];
+export async function runProgram(req: RunRequest): Promise<RunResult> {
+  if (req.signal.aborted) throw new DOMException('stopped', 'AbortError');
 
-export async function runProgram(req: RunRequest, hooks: RunHooks): Promise<RunResult> {
-  const chain: Array<Exclude<EngineId, 'auto'>> =
-    settings.engine === 'auto' ? [...autoOrder, 'offline'] : [settings.engine];
-
-  let lastError: unknown = null;
-
-  for (const id of chain) {
-    if (req.signal.aborted) throw new DOMException('stopped', 'AbortError');
-
-    if (id === 'offline' && settings.engine === 'auto') {
-      hooks.onProgress(t('run.fallbackOffline'));
-    } else {
-      hooks.onProgress(t('run.connecting', { engine: ENGINE_NAMES[id] }));
-    }
-
+  // Jeśli użytkownik wybrał konkretny silnik
+  if (settings.engine !== 'auto') {
     try {
-      const result = await RUNNERS[id](req);
-      if (id !== 'offline') {
-        autoOrder = [id as 'piston' | 'godbolt' | 'wandbox', ...autoOrder.filter((e) => e !== id)];
-      }
-      return result;
+      return await RUNNERS[settings.engine](req);
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') throw err;
-      lastError = err;
-      hooks.onEngineFailed(ENGINE_NAMES[id]);
+      return await offline.run(req);
     }
   }
 
-  throw lastError instanceof Error ? lastError : new Error(t('run.noEngines'));
+  // Tryb domyślny: jeśli kod nie wymaga zaawansowanego STL — wykonaj natychmiast lokalnie (~5 ms)
+  const needsOnline = offline.unsupportedFeatures(req.code).length > 0;
+  if (!needsOnline) {
+    return await offline.run(req);
+  }
+
+  // Jeśli kod używa np. vector/string/algorithm — uruchom równolegle kompilatory online i weź najszybszą odpowiedź
+  try {
+    return await raceFirstSuccess([godbolt.run(req), wandbox.run(req), piston.run(req)]);
+  } catch {
+    if (req.signal.aborted) throw new DOMException('stopped', 'AbortError');
+    return await offline.run(req);
+  }
 }
 
 /** Szybkie sprawdzenie, czy dany kompilator odpowiada z tej sieci. */

@@ -1,5 +1,6 @@
 /* Motywy: 4 gotowe (zdefiniowane w style.css) + motyw własny,
-   który jest generowany tutaj z kilku kolorów wybranych przez użytkownika. */
+   który jest generowany tutaj z kilku kolorów wybranych przez użytkownika
+   wraz z wyliczeniem dwukierunkowych cieni neumorficznych. */
 
 import { settings, type ThemeName } from './state';
 
@@ -46,7 +47,7 @@ const SYNTAX: Record<'dark' | 'light' | 'gray' | 'black', Record<string, string>
     '--syn-type': '#ffcb6b',
     '--syn-str': '#a5e075',
     '--syn-num': '#f78c6c',
-    '--syn-com': '#5f6b7e',
+    '--syn-com': '#69778c',
     '--syn-fn': '#82aaff',
     '--syn-pre': '#4dd0c8',
     '--syn-op': '#a4b1c4',
@@ -72,26 +73,26 @@ const SYNTAX: Record<'dark' | 'light' | 'gray' | 'black', Record<string, string>
     '--syn-op': '#c7cdd8',
   },
   light: {
-    '--syn-key': '#8b29b8',
-    '--syn-type': '#0a7f78',
-    '--syn-str': '#1a7f37',
-    '--syn-num': '#b15c00',
-    '--syn-com': '#8a94a6',
-    '--syn-fn': '#1d55e0',
-    '--syn-pre': '#a3581b',
-    '--syn-op': '#4a5568',
+    '--syn-key': '#7c3aed',
+    '--syn-type': '#0d7490',
+    '--syn-str': '#15803d',
+    '--syn-num': '#b45309',
+    '--syn-com': '#7c899e',
+    '--syn-fn': '#2563eb',
+    '--syn-pre': '#9a3412',
+    '--syn-op': '#475569',
   },
 };
 
 /** Miniaturki do kafelków wyboru motywu. */
 export const THEME_PREVIEW: Record<Exclude<ThemeName, 'custom'>, { bg: string; panel: string; text: string; accent: string }> = {
-  light: { bg: '#eef1f7', panel: '#ffffff', text: '#16202f', accent: '#2f6bff' },
-  gray: { bg: '#30343b', panel: '#3a3f48', text: '#eef0f4', accent: '#7aa2f7' },
-  dark: { bg: '#0f131a', panel: '#161b24', text: '#e7ecf4', accent: '#5b8cff' },
-  black: { bg: '#000000', panel: '#0a0a0b', text: '#ededf0', accent: '#22d3ee' },
+  light: { bg: '#e6ecf4', panel: '#edf2f9', text: '#1e293b', accent: '#3b6ef6' },
+  gray: { bg: '#343944', panel: '#3b404d', text: '#eef0f4', accent: '#7aa2f7' },
+  dark: { bg: '#222731', panel: '#272d38', text: '#e7ecf4', accent: '#638eff' },
+  black: { bg: '#14171d', panel: '#191d24', text: '#ededf0', accent: '#22d3ee' },
 };
 
-/* ---------- motyw własny ---------- */
+/* ---------- motyw własny (neumorficzny) ---------- */
 function buildCustomCss(): string {
   const c = settings.custom;
   const text = c.text;
@@ -101,37 +102,63 @@ function buildCustomCss(): string {
   const accent = c.accent;
   const dark = luminance(bg) < 0.4;
 
+  const surfaceHi = mix(panel, '#ffffff', dark ? 0.05 : 0.35);
+  const surfaceLo = mix(panel, '#000000', dark ? 0.08 : 0.04);
+  const neuLight = mix(bg, '#ffffff', dark ? 0.075 : 0.85);
+  const neuDark = mix(bg, '#000000', dark ? 0.38 : 0.16);
+  const insetLight = mix(panel, '#ffffff', dark ? 0.065 : 0.85);
+  const insetDark = mix(panel, '#000000', dark ? 0.4 : 0.16);
+  const edInsetLight = mix(ed, '#ffffff', dark ? 0.06 : 0.82);
+  const edInsetDark = mix(ed, '#000000', dark ? 0.44 : 0.17);
+  const rimHi = dark ? 'rgba(255, 255, 255, 0.07)' : 'rgba(255, 255, 255, 0.82)';
+  const rimLo = dark ? 'rgba(0, 0, 0, 0.42)' : 'rgba(160, 175, 198, 0.35)';
+  const neuRim = `inset 1px 1px 1px ${rimHi}, inset -1px -1px 1px ${rimLo}`;
+
   const vars: Record<string, string> = {
     '--bg': bg,
-    '--bg-2': mix(bg, dark ? '#000000' : '#ffffff', 0.25),
+    '--bg-2': mix(bg, dark ? '#000000' : '#ffffff', 0.12),
     '--panel': panel,
-    '--panel-2': mix(panel, text, 0.06),
-    '--panel-3': mix(panel, text, 0.13),
-    '--border': mix(panel, text, 0.2),
-    '--border-soft': mix(panel, text, 0.11),
+    '--panel-2': mix(panel, text, 0.04),
+    '--panel-3': mix(panel, text, 0.09),
+    '--surface-hi': surfaceHi,
+    '--surface-lo': surfaceLo,
+    '--surface-grad': `linear-gradient(145deg, ${surfaceHi}, ${surfaceLo})`,
+    '--border': mix(panel, text, 0.13),
+    '--border-soft': mix(panel, text, 0.07),
     '--text': text,
-    '--text-dim': mix(text, bg, 0.32),
-    '--text-faint': mix(text, bg, 0.52),
+    '--text-dim': mix(text, bg, 0.3),
+    '--text-faint': mix(text, bg, 0.5),
     '--accent': accent,
     '--accent-2': mix(accent, dark ? '#ffffff' : '#000000', 0.18),
     '--accent-contrast': luminance(accent) > 0.45 ? '#10131a' : '#ffffff',
     '--accent-soft': rgba(accent, 0.15),
-    '--shadow': `0 18px 46px ${rgba(dark ? '#000000' : '#1b2a4a', dark ? 0.55 : 0.18)}`,
+    '--accent-glow': rgba(accent, 0.32),
+    '--neu-light': neuLight,
+    '--neu-dark': neuDark,
+    '--neu-rim': neuRim,
+    '--neu-raised-lg': `-8px -8px 18px ${neuLight}, 8px 8px 18px ${neuDark}, ${neuRim}`,
+    '--neu-raised': `-5px -5px 12px ${neuLight}, 5px 5px 12px ${neuDark}, ${neuRim}`,
+    '--neu-raised-sm': `-3px -3px 7px ${neuLight}, 3px 3px 7px ${neuDark}, ${neuRim}`,
+    '--neu-raised-xs': `-2px -2px 5px ${neuLight}, 2px 2px 5px ${neuDark}, ${neuRim}`,
+    '--neu-inset-deep': `inset 5px 5px 11px ${edInsetDark}, inset -5px -5px 11px ${edInsetLight}`,
+    '--neu-inset': `inset 4px 4px 8px ${insetDark}, inset -4px -4px 8px ${insetLight}`,
+    '--neu-inset-sm': `inset 2.5px 2.5px 5px ${insetDark}, inset -2.5px -2.5px 5px ${insetLight}`,
+    '--shadow': `-10px -10px 24px ${neuLight}, 14px 18px 36px ${rgba('#000000', dark ? 0.55 : 0.18)}, ${neuRim}`,
     '--ed-bg': ed,
-    '--ed-text': mix(text, ed, 0.06),
+    '--ed-text': mix(text, ed, 0.05),
     '--ed-gutter-bg': ed,
-    '--ed-gutter-text': mix(text, ed, 0.6),
-    '--ed-active-line': rgba(dark ? '#ffffff' : '#000000', 0.045),
-    '--ed-selection': rgba(accent, 0.28),
+    '--ed-gutter-text': mix(text, ed, 0.58),
+    '--ed-active-line': rgba(dark ? '#ffffff' : '#000000', 0.04),
+    '--ed-selection': rgba(accent, 0.25),
     '--ed-cursor': accent,
-    '--ed-bracket': rgba(accent, 0.35),
-    '--run': dark ? '#22c55e' : '#16a34a',
-    '--run-hover': dark ? '#1eb155' : '#128a3f',
+    '--ed-bracket': rgba(accent, 0.32),
+    '--run': dark ? '#1ec96b' : '#16a34a',
+    '--run-hover': dark ? '#25db77' : '#128a3f',
     '--danger': dark ? '#ff6b6b' : '#d92d20',
     '--warn': dark ? '#f0b429' : '#b7791f',
     '--ok': dark ? '#34d399' : '#0f9d58',
     ...SYNTAX[c.base],
-    '--syn-var': mix(text, ed, 0.06),
+    '--syn-var': mix(text, ed, 0.05),
   };
 
   const body = Object.entries(vars)
@@ -164,7 +191,7 @@ export function applyTheme(): void {
   root.style.setProperty('--mono-font', monoStack(settings.monoFont));
 
   // kolor paska przeglądarki na telefonie
-  const color = getComputedStyle(root).getPropertyValue('--panel').trim() || '#161b24';
+  const color = getComputedStyle(root).getPropertyValue('--bg').trim() || '#222731';
   let meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
   if (!meta) {
     meta = document.createElement('meta');
