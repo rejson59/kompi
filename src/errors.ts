@@ -507,8 +507,8 @@ function explainCompilerMsg(msg: string, allKnownWords: string[]): string | null
   }
   if (/input format mismatch|Memory overflow/i.test(msg)) {
     return pick(
-      'Program nie mógł wczytać danych — sprawdź, czy w zakładce <code>Wejście</code> wpisano dane w odpowiedniej formie.',
-      'The program could not read input — check that the “Input” tab has data in the right format.',
+      'Program nie mógł wczytać danych — sprawdź, czy w polu <code>Wejście</code> wpisano dane w odpowiedniej formie.',
+      'The program could not read input — check that the “Input” field has data in the right format.',
     );
   }
 
@@ -1009,8 +1009,8 @@ export function runtimeHint(exitCode: number | null, signalName?: string | null,
   }
   if (/input format mismatch|Memory overflow/i.test(stderr)) {
     return pick(
-      'Program nie mógł wczytać danych — sprawdź, czy w zakładce <code>Wejście</code> wpisano dane w odpowiedniej formie.',
-      'The program could not read input — check that the “Input” tab has data in the right format.',
+      'Program nie mógł wczytać danych — sprawdź, czy w polu <code>Wejście</code> wpisano dane w odpowiedniej formie.',
+      'The program could not read input — check that the “Input” field has data in the right format.',
     );
   }
   if (/overflow/i.test(stderr)) {

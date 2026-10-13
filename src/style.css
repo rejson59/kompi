@@ -1124,40 +1124,41 @@ kbd {
   font-family: var(--ui-font);
   font-style: italic;
 }
-.input-panel {
-  flex: 1 1 auto;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.stdin-area {
-  flex: 1 1 auto;
-  min-height: 0;
-  width: 100%;
-  resize: none;
-  padding: 14px 16px;
-  border: none;
-  border-radius: var(--r-m);
-  background: var(--ed-bg);
-  box-shadow: var(--neu-inset-deep);
-  color: var(--ed-text);
-  font-family: var(--mono-font);
-  font-size: var(--out-font-size, 14px);
-  line-height: 1.62;
-  outline: none;
-}
-.stdin-area:focus {
-  box-shadow:
-    var(--neu-inset-deep),
-    0 0 0 2px var(--accent-glow);
-}
-.stdin-hint {
+/* Pasek „Wejście” nad wynikiem — widoczny tylko, gdy program czyta cin */
+.input-strip {
   flex: none;
-  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  padding: 5px 12px;
+  border-radius: var(--r-m);
+  background: var(--bg);
+  box-shadow: var(--neu-inset-sm);
+}
+.input-strip-label {
+  flex: none;
   font-family: var(--ui-font);
   font-size: 11.5px;
-  line-height: 1.5;
+  font-weight: 700;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  user-select: none;
+}
+.stdin-line {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 30px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--mono-font);
+  font-size: 13.5px;
+  outline: none;
+}
+.stdin-line::placeholder {
+  color: var(--text-faint);
 }
 .out-line {
   display: block;

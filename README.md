@@ -19,7 +19,7 @@ a gotową pracę wysyłasz nauczycielowi jednym linkiem. Działa w przeglądarce
 | 🎨 **Wygląd** | Ikona pędzla: motyw **jasny / szary / ciemny / ultra ciemny (deep black) / własny** (własne kolory), układ **obok siebie** albo **jeden pod drugim**, zamiana stron, wielkość i krój czcionki. |
 | 🌍 **Język** | Pełne PL / EN (interfejs, słowniczek, podpowiedzi, komunikaty błędów). |
 | 🔗 **Udostępnianie** | Link z całym kodem (działa zawsze, bez kont) + przycisk „Skróć link”. Możesz dołączyć dane wejściowe, wynik programu i swój podpis (imię i klasa) — nauczyciel zobaczy go na górze strony. |
-| ⌨️ **Wejście programu** | Zakładka „Wejście” — tam wpisujesz dane, które program czyta przez `cin`. |
+| ⌨️ **Wejście programu** | Pole „Wejście” nad wynikiem (pokazuje się, gdy program czyta `cin`) — tam wpisujesz dane dla programu. |
 | 💾 **Zapamiętywanie** | Kod i ustawienia zostają w przeglądarce po odświeżeniu. Można też pobrać plik `main.cpp` lub wczytać własny. |
 
 ## Skróty klawiszowe

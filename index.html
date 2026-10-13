@@ -140,34 +140,24 @@
 
         <section class="pane pane-output" id="pane-output">
           <div class="pane-head">
-            <div class="tabs" role="tablist" aria-label="Wyjście / Wejście">
-              <button type="button" class="tab is-active" id="tab-output" role="tab" aria-selected="true">
-                <svg class="i"><use href="#i-terminal" /></svg>
-                <span data-i18n="tab.output">Wyjście</span>
-              </button>
-              <button type="button" class="tab" id="tab-input" role="tab" aria-selected="false">
-                <svg class="i"><use href="#i-download" /></svg>
-                <span data-i18n="tab.input">Wejście</span>
-              </button>
-            </div>
+            <span class="pane-label" data-i18n="tab.output">Wyjście</span>
             <div class="spacer"></div>
             <span id="run-status" class="run-status"></span>
           </div>
-          <div id="output" class="output" tabindex="0"></div>
-          <div id="input-panel" class="input-panel is-hidden">
-            <textarea
+          <div id="input-strip" class="input-strip is-hidden">
+            <span class="input-strip-label" data-i18n="tab.input">Wejście</span>
+            <input
               id="stdin-input"
-              class="stdin-area"
+              class="stdin-line"
+              type="text"
               spellcheck="false"
               autocomplete="off"
               data-i18n-placeholder="stdin.placeholder"
               data-i18n-title="stdin.hint"
               placeholder="Dane wejściowe dla cin (np. 5 7)…"
-            ></textarea>
-            <div class="stdin-hint" data-i18n="stdin.hint">
-              Tu wpisz dane, które program wczyta przez cin (każda wartość w nowej linii lub po spacji).
-            </div>
+            />
           </div>
+          <div id="output" class="output" tabindex="0"></div>
           <div class="kompi-disclaimer" data-i18n="kompi.disclaimer">Kompi może popełniać błędy.</div>
         </section>
       </main>

@@ -37,10 +37,8 @@ const splitEl = $('split');
 const paneEditor = $('pane-editor');
 const splitter = $('splitter');
 const outputEl = $('output');
-const inputPanel = $('input-panel');
-const stdinArea = $<HTMLTextAreaElement>('stdin-input');
-const tabOutputBtn = $<HTMLButtonElement>('tab-output');
-const tabInputBtn = $<HTMLButtonElement>('tab-input');
+const inputStrip = $('input-strip');
+const stdinArea = $<HTMLInputElement>('stdin-input');
 const runBtn = $<HTMLButtonElement>('btn-run');
 const stopBtn = $<HTMLButtonElement>('btn-stop');
 const runStatus = $('run-status');
@@ -57,22 +55,15 @@ let myOwnCode: string | null = null;
 /** ostatni wynik programu — dołączany do udostępnianej pracy */
 let lastRunOutput = '';
 
-/* ------------------------- zakładki Wyjście / Wejście ------------------- */
-function selectPaneTab(which: 'output' | 'input'): void {
-  const isOut = which === 'output';
-  tabOutputBtn.classList.toggle('is-active', isOut);
-  tabInputBtn.classList.toggle('is-active', !isOut);
-  tabOutputBtn.setAttribute('aria-selected', String(isOut));
-  tabInputBtn.setAttribute('aria-selected', String(!isOut));
-  outputEl.classList.toggle('is-hidden', !isOut);
-  inputPanel.classList.toggle('is-hidden', isOut);
+/* ------- pasek „Wejście” — tylko gdy program czyta dane przez cin ------- */
+function codeReadsInput(code: string): boolean {
+  return /\bcin\s*>>|\bgetline\s*\(|\bscanf\s*\(/.test(code);
 }
 
-tabOutputBtn.addEventListener('click', () => selectPaneTab('output'));
-tabInputBtn.addEventListener('click', () => {
-  selectPaneTab('input');
-  stdinArea.focus();
-});
+function updateInputStrip(code: string): void {
+  inputStrip.classList.toggle('is-hidden', !codeReadsInput(code));
+}
+
 stdinArea.addEventListener('input', () => scheduleSave());
 
 /* ------------------------------- wyjście -------------------------------- */
@@ -136,7 +127,6 @@ async function run(): Promise<void> {
 
   if (settings.clearBeforeRun) clearOutput();
   clearIssues(view);
-  selectPaneTab('output');
   setRunning(true);
   setStatus('');
 
@@ -454,7 +444,8 @@ async function loadFromHash(initial: boolean): Promise<boolean> {
 
 /* -------------------------------- edytor --------------------------------- */
 const editorHooks: EditorHooks = {
-  onChange: () => {
+  onChange: (code: string) => {
+    updateInputStrip(code);
     scheduleSave();
   },
   onCursor: () => {
@@ -486,6 +477,7 @@ async function boot(): Promise<void> {
   titleInput.value = activeItem.title;
   stdinArea.value = loadStdin();
   view = createEditor($('editor'), activeItem.code, editorHooks);
+  updateInputStrip(activeItem.code);
 
   initSplitter();
 
