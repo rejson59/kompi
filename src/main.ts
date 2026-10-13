@@ -198,17 +198,18 @@ function renderKompiReview(review: KompiCodeReview): void {
 
   const listEl = h('div', { class: 'kompi-issue-list' });
   for (const item of review.issues) {
+    const isWarn = item.confidence !== 'certain';
     const row = h(
       'div',
       {
-        class: 'kompi-issue-item',
+        class: `kompi-issue-item${isWarn ? ' is-warn' : ''}`,
         onclick: () => goToLine(view, item.line),
         title: isPl ? 'Kliknij, aby przejść do tej linii' : 'Click to jump to this line',
       },
       h(
         'div',
         { class: 'kompi-issue-top' },
-        h('span', { class: 'kompi-issue-badge', text: t('err.line', { line: item.line }) }),
+        h('span', { class: `kompi-issue-badge${isWarn ? ' is-warn' : ''}`, text: t('err.line', { line: item.line }) }),
         item.codeSnippet
           ? h('code', { class: 'kompi-issue-code', text: item.codeSnippet })
           : null,
@@ -222,8 +223,14 @@ function renderKompiReview(review: KompiCodeReview): void {
     'div',
     { class: 'kompi-review-legend' },
     h('span', { class: 'legend-pill is-ok', text: isPl ? 'Zielony = poprawne' : 'Green = correct' }),
-    h('span', { class: 'legend-pill is-bad', text: isPl ? 'Czerwony = do poprawy' : 'Red = needs fix' }),
+    h('span', {
+      class: 'legend-pill is-warn',
+      text: isPl ? 'Żółty = błąd gdzieś w okolicy' : 'Yellow = error somewhere around',
+    }),
+    h('span', { class: 'legend-pill is-bad', text: isPl ? 'Czerwony = pewny błąd' : 'Red = confirmed error' }),
   );
+
+  const onlyWarnings = review.badLines.length === 0 && review.warnLines.length > 0;
 
   const badCard = h(
     'div',
@@ -235,9 +242,13 @@ function renderKompiReview(review: KompiCodeReview): void {
         { class: 'kompi-review-head-text' },
         h('div', {
           class: 'kompi-review-title',
-          text: isPl
-            ? 'Kompi sprawdził Twój kod — zobacz, co poszło nie tak:'
-            : 'Kompi checked your code — here’s what went wrong:',
+          text: onlyWarnings
+            ? isPl
+              ? 'Kompi nie jest pewien — tu gdzieś może być błąd:'
+              : 'Kompi is not sure — there may be an error somewhere around here:'
+            : isPl
+              ? 'Kompi sprawdził Twój kod — zobacz, co poszło nie tak:'
+              : 'Kompi checked your code — here’s what went wrong:',
         }),
         legendEl,
       ),
@@ -256,8 +267,8 @@ function renderResult(r: RunResult): void {
   const code = view.state.doc.toString();
   const review = analyzeCodeWithKompi(code, r.compileOutput, r.compileFailed);
 
-  /* Podświetl w edytorze poprawne linie na zielono, a błędne na czerwono */
-  showLineReview(view, review.goodLines, review.badLines);
+  /* Podświetl w edytorze poprawne linie na zielono, niepewne na żółto, pewne błędy na czerwono */
+  showLineReview(view, review.goodLines, review.badLines, review.warnLines);
 
   if (!review.ok) {
     showIssues(
@@ -265,7 +276,7 @@ function renderResult(r: RunResult): void {
       review.issues.map((it) => ({
         line: it.line,
         col: 1,
-        severity: 'error',
+        severity: it.confidence === 'certain' ? 'error' : 'warning',
         message: stripHtmlTags(it.explanation),
       })),
     );

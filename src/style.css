@@ -1028,7 +1028,13 @@ kbd {
 .cm-diagnostic-error {
   border-left-color: var(--danger) !important;
 }
+.cm-diagnostic-warning {
+  border-left-color: var(--warn) !important;
+}
 .cm-lintRange-error {
+  background-position: left bottom;
+}
+.cm-lintRange-warning {
   background-position: left bottom;
 }
 
@@ -2340,6 +2346,15 @@ input[type='range']::-moz-range-thumb {
   box-shadow: inset 3px 0 0 var(--danger);
 }
 
+.cm-line.cm-line-warn,
+.cm-line.cm-line-warn * {
+  color: var(--warn) !important;
+}
+.cm-line.cm-line-warn {
+  background-color: color-mix(in srgb, var(--warn) 12%, transparent) !important;
+  box-shadow: inset 3px 0 0 var(--warn);
+}
+
 /* ------- Karta wyjaśnienia Kompiego z boku (w panelu Wyjście) -------- */
 .kompi-review-card {
   font-family: var(--ui-font);
@@ -2441,6 +2456,10 @@ input[type='range']::-moz-range-thumb {
   color: var(--ok);
 }
 
+.legend-pill.is-warn {
+  color: var(--warn);
+}
+
 .legend-pill.is-bad {
   color: var(--danger);
 }
@@ -2455,14 +2474,30 @@ input[type='range']::-moz-range-thumb {
   padding: 11px 13px;
   border-radius: 13px;
   background: var(--bg);
-  box-shadow: var(--neu-inset-sm);
+  box-shadow:
+    var(--neu-inset-sm),
+    inset 3px 0 0 var(--danger);
   cursor: pointer;
   transition: transform var(--dur) ease, box-shadow var(--dur) ease;
 }
 
+.kompi-issue-item.is-warn {
+  box-shadow:
+    var(--neu-inset-sm),
+    inset 3px 0 0 var(--warn);
+}
+
 .kompi-issue-item:hover {
   transform: translateY(-1px);
-  box-shadow: var(--neu-raised-xs);
+  box-shadow:
+    var(--neu-raised-xs),
+    inset 3px 0 0 var(--danger);
+}
+
+.kompi-issue-item.is-warn:hover {
+  box-shadow:
+    var(--neu-raised-xs),
+    inset 3px 0 0 var(--warn);
 }
 
 .kompi-issue-top {
@@ -2484,6 +2519,11 @@ input[type='range']::-moz-range-thumb {
   font-weight: 750;
 }
 
+.kompi-issue-badge.is-warn {
+  background: color-mix(in srgb, var(--warn) 18%, var(--bg));
+  color: var(--warn);
+}
+
 .kompi-issue-code {
   font-family: var(--mono-font);
   font-size: 12px;
@@ -2495,6 +2535,10 @@ input[type='range']::-moz-range-thumb {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.kompi-issue-item.is-warn .kompi-issue-code {
+  color: var(--warn);
 }
 
 .kompi-issue-exp {
