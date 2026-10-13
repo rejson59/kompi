@@ -14,11 +14,18 @@ export interface KompiLineIssue {
   line: number;
   codeSnippet: string;
   explanation: string;
+  /** 'certain' = pewny błąd (czerwony), 'possible' = gdzieś tu jest błąd (żółty) */
+  confidence: KompiConfidence;
 }
+
+export type KompiConfidence = 'certain' | 'possible';
 
 export interface KompiCodeReview {
   ok: boolean;
+  /** linie z pewnym błędem (czerwone) */
   badLines: number[];
+  /** linie, gdzie gdzieś w okolicy jest błąd, ale Kompi nie wie co dokładnie (żółte) */
+  warnLines: number[];
   goodLines: number[];
   issues: KompiLineIssue[];
 }
@@ -369,8 +376,9 @@ function splitTopLevelCommas(s: string): string[] {
   return parts;
 }
 
-/** Tłumaczy pojedynczy komunikat kompilatora (GCC lub JSCPP) na przyjazne wyjaśnienie Kompiego. */
-function explainCompilerMsg(msg: string, allKnownWords: string[]): string {
+/** Tłumaczy pojedynczy komunikat kompilatora (GCC lub JSCPP) na przyjazne wyjaśnienie Kompiego.
+    Zwraca null, gdy komunikat jest nieznany — wtedy pokażemy żółte „gdzieś tu jest błąd”. */
+function explainCompilerMsg(msg: string, allKnownWords: string[]): string | null {
   // 1. JSCPP / GCC: nieznana zmienna lub polecenie
   const undeclMatch =
     msg.match(/variable\s+([A-Za-z_][A-Za-z0-9_]*)\s+does not exist/i) ||
@@ -488,16 +496,46 @@ function explainCompilerMsg(msg: string, allKnownWords: string[]): string {
     );
   }
 
+  if (/overflow/i.test(msg) && !/Infinity|NaN/i.test(msg)) {
+    return pick(
+      'Liczba przekroczyła zakres swojego typu — np. <code>int</code> przechowuje maksymalnie ok. 2 miliardy. Sprawdź obliczenia albo użyj typu <code>long long</code>.',
+      'The number went out of its type’s range — e.g. <code>int</code> holds up to about 2 billion. Check the math or use <code>long long</code>.',
+    );
+  }
+  if (/Infinity|division by zero|devide by zero/i.test(msg)) {
+    return pick('Dzielenie przez zero!', 'Division by zero!');
+  }
+  if (/input format mismatch|Memory overflow/i.test(msg)) {
+    return pick(
+      'Program nie mógł wczytać danych — sprawdź, czy w polu <code>Wejście</code> wpisano dane w odpowiedniej formie.',
+      'The program could not read input — check that the “Input” field has data in the right format.',
+    );
+  }
+
+  // Nieznany komunikat — nie zgadujemy, co dokładnie jest nie tak
+  return null;
+}
+
+/** Komunikat, gdy Kompi wie, że coś jest nie tak, ale nie ma dokładnie zaprogramowanego takiego błędu. */
+function uncertainIssueMessage(): string {
   return pick(
-    'W tej linii jest błąd składni — sprawdź dokładnie pisownię poleceń, nawiasy i średnik.',
-    'Syntax error on this line — double-check command spelling, parentheses, and the semicolon.',
+    'Tu gdzieś jest błąd, ale Kompi nie jest pewien co dokładnie — sprawdź spokojnie nawiasy, średniki i pisownię poleceń w tej okolicy.',
+    'There is an error somewhere around here, but Kompi is not sure what exactly — slowly check parentheses, semicolons and spelling in this area.',
+  );
+}
+
+/** Komunikat, gdy kompilator nie wskazał nawet numeru linii. */
+function uncertainAreaMessage(): string {
+  return pick(
+    'Program nie skompilował się, ale kompilator nie wskazał dokładnej linii — błąd jest gdzieś w tej okolicy.',
+    'The program did not compile, but the compiler did not point to an exact line — the error is somewhere in this area.',
   );
 }
 
 /**
  * Sprawdza cały kod linia po linii po kliknięciu „Uruchom”.
- * Zwraca listę linii poprawnych (zielonych), błędnych (czerwonych)
- * oraz proste wyjaśnienia Kompiego, co użytkownik zrobił nie tak.
+ * Zwraca listę linii poprawnych (zielonych), pewnych błędów (czerwonych)
+ * oraz niepewnych miejsc „gdzieś tu jest błąd” (żółtych) wraz z wyjaśnieniami Kompiego.
  */
 export function analyzeCodeWithKompi(
   code: string,
@@ -518,6 +556,7 @@ export function analyzeCodeWithKompi(
     return {
       ok: true,
       badLines: [],
+      warnLines: [],
       goodLines: nonEmptyLines,
       issues: [],
     };
@@ -528,11 +567,17 @@ export function analyzeCodeWithKompi(
   const callCandidates = [...CPP_FUNCTIONS_AND_METHODS, ...userIds];
   const allKnownWords = [...ALL_STD_WORDS, ...userIds];
 
-  const issueMap = new Map<number, string>();
-  const addIssue = (lineNo: number, explanation: string) => {
+  const issueMap = new Map<number, { explanation: string; confidence: KompiConfidence }>();
+  const addIssue = (lineNo: number, explanation: string, confidence: KompiConfidence = 'certain') => {
     if (lineNo < 1 || lineNo > rawLines.length) return;
-    if (!issueMap.has(lineNo)) {
-      issueMap.set(lineNo, explanation);
+    const existing = issueMap.get(lineNo);
+    if (!existing) {
+      issueMap.set(lineNo, { explanation, confidence });
+      return;
+    }
+    // Pewny błąd (czerwony) wygrywa z niepewnym (żółtym) na tej samej linii
+    if (existing.confidence === 'possible' && confidence === 'certain') {
+      issueMap.set(lineNo, { explanation, confidence });
     }
   };
 
@@ -808,31 +853,42 @@ export function analyzeCodeWithKompi(
       continue;
     }
 
-    addIssue(ci.line, explainCompilerMsg(ci.message, allKnownWords));
+    // Znany typ błędu → czerwony (pewny); nieznany komunikat → żółty („gdzieś tu jest błąd”)
+    const explained = explainCompilerMsg(ci.message, allKnownWords);
+    addIssue(ci.line, explained ?? uncertainIssueMessage(), explained ? 'certain' : 'possible');
   }
 
-  // 4. Fallback: jeśli kompilator zgłosił błąd bez numeru linii
+  // 4. Fallback: kompilator zgłosił błąd bez numeru linii — wiemy tylko, że błąd jest gdzieś w okolicy
   if (issueMap.size === 0 && nonEmptyLines.length > 0) {
     const mainBodyLine =
       nonEmptyLines.find(
         (l) => !cleanLines[l - 1].trim().startsWith('#') && !/\busing\s+namespace\b/.test(cleanLines[l - 1]),
       ) ?? nonEmptyLines[0];
-    addIssue(mainBodyLine, explainCompilerMsg(compileOutput, allKnownWords));
+    const explained = explainCompilerMsg(compileOutput, allKnownWords);
+    addIssue(mainBodyLine, explained ?? uncertainAreaMessage(), 'possible');
   }
 
-  const badLines = [...issueMap.keys()].sort((a, b) => a - b);
-  const badSet = new Set(badLines);
-  const goodLines = nonEmptyLines.filter((l) => !badSet.has(l));
+  const allIssueLines = [...issueMap.keys()].sort((a, b) => a - b);
+  const badLines: number[] = [];
+  const warnLines: number[] = [];
+  for (const line of allIssueLines) {
+    if (issueMap.get(line)!.confidence === 'certain') badLines.push(line);
+    else warnLines.push(line);
+  }
+  const problemSet = new Set(allIssueLines);
+  const goodLines = nonEmptyLines.filter((l) => !problemSet.has(l));
 
-  const issues: KompiLineIssue[] = badLines.map((line) => ({
+  const issues: KompiLineIssue[] = allIssueLines.map((line) => ({
     line,
     codeSnippet: rawLines[line - 1]?.trim() ?? '',
-    explanation: issueMap.get(line)!,
+    explanation: issueMap.get(line)!.explanation,
+    confidence: issueMap.get(line)!.confidence,
   }));
 
   return {
     ok: false,
     badLines,
+    warnLines,
     goodLines,
     issues,
   };
@@ -948,6 +1004,21 @@ export function runtimeHint(exitCode: number | null, signalName?: string | null,
   if (sig.includes('FPE') || exitCode === 136) {
     return pick('Dzielenie przez zero!', 'Division by zero!');
   }
+  if (/division by zero|devide by zero|Infinity/i.test(stderr)) {
+    return pick('Dzielenie przez zero!', 'Division by zero!');
+  }
+  if (/input format mismatch|Memory overflow/i.test(stderr)) {
+    return pick(
+      'Program nie mógł wczytać danych — sprawdź, czy w polu <code>Wejście</code> wpisano dane w odpowiedniej formie.',
+      'The program could not read input — check that the “Input” field has data in the right format.',
+    );
+  }
+  if (/overflow/i.test(stderr)) {
+    return pick(
+      'Liczba przekroczyła zakres swojego typu — np. <code>int</code> przechowuje maksymalnie ok. 2 miliardy.',
+      'The number went out of its type’s range — e.g. <code>int</code> holds up to about 2 billion.',
+    );
+  }
   if (exitCode !== null && exitCode !== 0) {
     return pick(
       `Program zakończył się kodem ${exitCode}. Jeśli to nie było zamierzone, upewnij się, że <code>main</code> kończy się <code>return 0;</code>.`,
@@ -957,9 +1028,9 @@ export function runtimeHint(exitCode: number | null, signalName?: string | null,
   return null;
 }
 
-export function looksLikeMissingInput(code: string, stdin: string, stdout: string): boolean {
+export function looksLikeMissingInput(code: string, stdin: string, _stdout: string): boolean {
   const readsInput = /\bcin\s*>>|\bgetline\s*\(|\bscanf\s*\(/.test(code);
-  return readsInput && stdin.trim().length === 0 && stdout.trim().length === 0;
+  return readsInput && stdin.trim().length === 0;
 }
 
 function escapeHtml(s: string): string {

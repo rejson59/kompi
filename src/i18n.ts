@@ -76,7 +76,7 @@ const pl = {
   'run.stopped': 'Zatrzymano.',
   'run.timeout': 'Program działał za długo ({sec} s) i został przerwany. Może masz nieskończoną pętlę?',
   'run.waitingInput':
-    'Program prosi o dane, a zakładka „Wejście” jest pusta. Wpisz tam dane i uruchom jeszcze raz.',
+    'Program prosi o dane, a pole „Wejście” nad wynikiem jest puste. Wpisz tam dane i uruchom jeszcze raz.',
 
   'status.exitOk': 'Program zakończył się poprawnie (kod 0)',
   'status.exitBad': 'Program zakończył się kodem {code}',
@@ -85,6 +85,7 @@ const pl = {
   'status.time': 'czas: {t}',
   'out.compilerMsg': 'Komunikaty kompilatora',
   'out.noOutput': '(program nic nie wypisał)',
+  'out.partial': 'Wynik programu wygenerowany przed błędem:',
   'out.crash': 'Program przerwał działanie (sygnał {sig}). Częsta przyczyna: wyjście poza zakres tablicy.',
 
   'offline.title': 'Tryb offline',
@@ -329,7 +330,7 @@ const en: Record<I18nKey, string> = {
   'run.emptyCode': 'The editor is empty — write some code first.',
   'run.stopped': 'Stopped.',
   'run.timeout': 'The program ran too long ({sec} s) and was stopped. Maybe you have an infinite loop?',
-  'run.waitingInput': 'Your program asks for data but the “Input” tab is empty. Put the data there and run again.',
+  'run.waitingInput': 'Your program asks for data but the “Input” field is empty. Put the data there and run again.',
 
   'status.exitOk': 'Program finished successfully (exit code 0)',
   'status.exitBad': 'Program finished with exit code {code}',
@@ -338,6 +339,7 @@ const en: Record<I18nKey, string> = {
   'status.time': 'time: {t}',
   'out.compilerMsg': 'Compiler messages',
   'out.noOutput': '(the program printed nothing)',
+  'out.partial': 'Program output generated before the error:',
   'out.crash': 'The program crashed (signal {sig}). A common cause: going outside an array.',
 
   'offline.title': 'Offline mode',

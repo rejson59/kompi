@@ -22,6 +22,36 @@ interface ParsedStruct {
 let activeUserStructs: ParsedStruct[] = [];
 
 /**
+ * Zamienia zachowanie JSCPP bliższe prawdziwemu C++:
+ * - niezainicjalizowana zmienna liczbowa dostaje 0 zamiast NaN (NaN psuł potem działania),
+ * - dzielenie całkowite ucina w stronę zera (jak w C++), a nie w dół,
+ * - brak danych wejściowych nie wysadza programu.
+ */
+function patchRuntimeSemantics(rt: any): void {
+  if (rt._kompiSemanticsPatched) return;
+  rt._kompiSemanticsPatched = true;
+  const origVal = rt.val.bind(rt);
+  rt.val = function (t: any, v: any, left?: boolean, isInitializing?: boolean) {
+    if (t && t.type === 'primitive' && typeof v === 'number' && Number.isNaN(v)) v = 0;
+    return origVal(t, v, left, isInitializing);
+  };
+  // W C++ iloraz dwóch całkowitych ucina ułamek w stronę zera: -160/9 == -17 (nie -18)
+  for (const sig of Object.keys(rt.types)) {
+    const div = rt.types[sig]?.handlers?.['o(/)'];
+    if (!div || typeof div.default !== 'function' || div._kompiTruncDiv) continue;
+    const origDiv = div.default;
+    div.default = function (rtInst: any, l: any, r: any) {
+      if (l && r && rtInst.isIntegerType(l.t) && rtInst.isIntegerType(r.t) && Number(r.v) !== 0) {
+        const q = Math.trunc(rtInst.booleanToNumber(l.v) / rtInst.booleanToNumber(r.v));
+        return rtInst.val(rtInst.promoteNumeric(l.t, r.t), q);
+      }
+      return origDiv(rtInst, l, r);
+    };
+    div._kompiTruncDiv = true;
+  }
+}
+
+/**
  * Zamienia konstrukcje C++ nieobsługiwane bezpośrednio przez parser PEG w JSCPP
  * na równoważny kod z zachowaniem dokładnej numeracji linii (1:1).
  */
@@ -367,6 +397,7 @@ function registerStandardLibraries(JSCPP: any): void {
 
   const stringInclude = {
     load(rt: any) {
+      patchRuntimeSemantics(rt);
       if (!rt.config.loadedLibraries.includes('iostream')) {
         rt.include('iostream');
       }
@@ -671,6 +702,13 @@ function registerStandardLibraries(JSCPP: any): void {
       if (cin) {
         const cinSig = rt.getTypeSignature(cin.t);
         const origRightShift = rt.types[cinSig].handlers['o(>>)'].default;
+        // Brak danych w Wejściu albo zły format nie przerywają programu —
+        // zmienna dostaje 0 (jak w C++11 przy nieudanej konwersji) i program leci dalej.
+        const zeroFill = (target: any) => {
+          if (!target || !target.t) return;
+          if (target.t.name === 'bool') target.v = false;
+          else target.v = 0;
+        };
         rt.types[cinSig].handlers['o(>>)'].default = function (rtInst: any, _cin: any, t: any) {
           if (t && t.t && t.t.type === 'class' && t.t.name === 'string') {
             const b = (_cin.v.buf || '').replace(/^\s+/, '');
@@ -680,7 +718,20 @@ function registerStandardLibraries(JSCPP: any): void {
             setStr(t, word);
             return _cin;
           }
-          return origRightShift(rtInst, _cin, t);
+          try {
+            const res = origRightShift(rtInst, _cin, t);
+            if (_cin.v && _cin.v.failbit) zeroFill(t);
+            else if (t && typeof t.v === 'number' && Number.isNaN(t.v)) zeroFill(t);
+            return res;
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            if (/input format mismatch/i.test(msg)) {
+              if (_cin.v) _cin.v.failbit = true;
+              zeroFill(t);
+              return _cin;
+            }
+            throw err;
+          }
         };
 
         rt.regFunc(
@@ -773,6 +824,7 @@ function registerStandardLibraries(JSCPP: any): void {
 
   const algorithmInclude = {
     load(rt: any) {
+      patchRuntimeSemantics(rt);
       rt.regFunc(
         (_rt: any, _this: any, first: any, last: any) => {
           if (first && first.v && Array.isArray(first.v.target)) {
@@ -901,6 +953,7 @@ function registerStandardLibraries(JSCPP: any): void {
   const origIostream = JSCPP.includes.iostream;
   JSCPP.includes.iostream = {
     load(rt: any) {
+      patchRuntimeSemantics(rt);
       origIostream.load(rt);
       for (const extra of ['cmath', 'cstdlib', 'ctime', 'cstring', 'cctype', 'iomanip']) {
         if (!rt.config.loadedLibraries.includes(extra) && JSCPP.includes[extra]) {
@@ -968,6 +1021,15 @@ const jscppReady = import('JSCPP').then((mod: any) => {
   return JSCPP;
 });
 
+/* Błędy kodu (kompilacja) — czerwony przegląd linii ma tu sens.
+   Reszta (błędy wykonania, np. przepełnienie liczby, brak danych wejściowych) —
+   program już się wykonywał, więc pokazujemy jego wynik i ostrzeżenie,
+   a nie „źle napisany kod”. */
+const COMPILE_ERROR_RE =
+  /Parsing Failure|does not exist|is not (?:defined|known)|cannot find library|already (?:defined|declared)|redefinition|redeclaration|expected |no method|with signature|cannot cast|you must return|you cannot return|only left value|does not support|operator in ostream cannot accept|operator in istream cannot accept|type .+ is unknown/i;
+const RUNTIME_ERROR_RE =
+  /overflow|mismatch|Memory overflow|Time limit|out of (?:bound|range)|division by zero|devide by zero|stack overflow|segmentation/i;
+
 self.onmessage = async (ev: MessageEvent<RunMsg>) => {
   const { code, stdin, maxTimeout } = ev.data;
   let out = '';
@@ -989,6 +1051,7 @@ self.onmessage = async (ev: MessageEvent<RunMsg>) => {
     let message = err instanceof Error ? err.message : String(err);
     // Przywróć czytelne nazwy vector<...> w komunikatach błędów
     message = message.replace(/\b__vec_([a-z]+)\b/g, 'vector<$1>');
-    (self as unknown as Worker).postMessage({ ok: false, out, error: message });
+    const runtimeError = !COMPILE_ERROR_RE.test(message) && (RUNTIME_ERROR_RE.test(message) || out.length > 0);
+    (self as unknown as Worker).postMessage({ ok: false, out, error: message, runtimeError });
   }
 };

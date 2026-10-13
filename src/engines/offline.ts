@@ -80,19 +80,24 @@ export async function run(req: RunRequest): Promise<RunResult> {
       });
     }, req.timeoutMs + 1500);
 
-    worker.onmessage = (ev: MessageEvent<{ ok: boolean; out: string; exitCode?: number; error?: string }>) => {
+    worker.onmessage = (
+      ev: MessageEvent<{ ok: boolean; out: string; exitCode?: number; error?: string; runtimeError?: boolean }>,
+    ) => {
       const data = ev.data;
       cleanup();
       const timedOut = !data.ok && /time limit/i.test(data.error ?? '');
+      /* Błąd wykonania (nie kompilacji) — program wystartował, więc pokażemy
+         jego wynik i ostrzeżenie zamiast „źle napisany kod”. */
+      const runtimeError = !data.ok && !timedOut && Boolean(data.runtimeError);
       if (timedOut) resetWorker();
       resolve({
         engine: 'offline',
         engineLabel: t('offline.title'),
-        compileOutput: data.ok || timedOut ? '' : data.error ?? '',
+        compileOutput: data.ok || timedOut || runtimeError ? '' : data.error ?? '',
         stdout: data.out ?? '',
-        stderr: '',
-        exitCode: data.ok ? data.exitCode ?? 0 : null,
-        compileFailed: !data.ok && !timedOut,
+        stderr: runtimeError ? (data.error ?? '') : '',
+        exitCode: data.ok ? data.exitCode ?? 0 : runtimeError ? 1 : null,
+        compileFailed: !data.ok && !timedOut && !runtimeError,
         timedOut,
         timeMs: Math.max(1, Math.round(performance.now() - started)),
       });

@@ -38,10 +38,12 @@ import { TOKEN_INDEX } from './glossary';
 import { t } from './i18n';
 import { luminance } from './themes';
 
-/* -------- Dekoracje linii po sprawdzeniu przez Kompiego (zielone / czerwone) -------- */
-const setLineReviewEffect = StateEffect.define<{ goodLines: number[]; badLines: number[] } | null>();
+/* -------- Dekoracje linii po sprawdzeniu przez Kompiego (zielone / żółte / czerwone) -------- */
+const setLineReviewEffect =
+  StateEffect.define<{ goodLines: number[]; badLines: number[]; warnLines: number[] } | null>();
 
 const okLineDeco = Decoration.line({ class: 'cm-line-ok' });
+const warnLineDeco = Decoration.line({ class: 'cm-line-warn' });
 const badLineDeco = Decoration.line({ class: 'cm-line-bad' });
 
 const lineReviewField = StateField.define<DecorationSet>({
@@ -56,15 +58,19 @@ const lineReviewField = StateField.define<DecorationSet>({
     for (const ef of tr.effects) {
       if (ef.is(setLineReviewEffect)) {
         if (!ef.value) return Decoration.none;
-        const { goodLines, badLines } = ef.value;
+        const { goodLines, badLines, warnLines } = ef.value;
         const goodSet = new Set(goodLines);
         const badSet = new Set(badLines);
+        const warnSet = new Set(warnLines);
         const builder = new RangeSetBuilder<Decoration>();
         const maxLines = tr.state.doc.lines;
         for (let lineNo = 1; lineNo <= maxLines; lineNo++) {
           if (badSet.has(lineNo)) {
             const line = tr.state.doc.line(lineNo);
             builder.add(line.from, line.from, badLineDeco);
+          } else if (warnSet.has(lineNo)) {
+            const line = tr.state.doc.line(lineNo);
+            builder.add(line.from, line.from, warnLineDeco);
           } else if (goodSet.has(lineNo)) {
             const line = tr.state.doc.line(lineNo);
             builder.add(line.from, line.from, okLineDeco);
@@ -322,10 +328,16 @@ export function showIssues(view: EditorView, issues: CompileIssue[]): void {
   view.dispatch(setDiagnostics(view.state, diags));
 }
 
-/** Koloruje linie w edytorze po kliknięciu „Uruchom”: zielone = poprawne, czerwone = błędne. */
-export function showLineReview(view: EditorView, goodLines: number[], badLines: number[]): void {
+/** Koloruje linie w edytorze po kliknięciu „Uruchom”:
+    zielone = poprawne, żółte = gdzieś tu jest błąd, czerwone = pewny błąd. */
+export function showLineReview(
+  view: EditorView,
+  goodLines: number[],
+  badLines: number[],
+  warnLines: number[] = [],
+): void {
   view.dispatch({
-    effects: setLineReviewEffect.of({ goodLines, badLines }),
+    effects: setLineReviewEffect.of({ goodLines, badLines, warnLines }),
   });
 }
 

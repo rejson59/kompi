@@ -147,8 +147,8 @@ export const GLOSSARY: GlossEntry[] = [
     title: { pl: 'cin — wczytywanie danych', en: 'cin — reading data' },
     short: { pl: 'Czeka, aż użytkownik poda dane, i zapisuje je do zmiennej.', en: 'Waits for the user to type data and stores it in a variable.' },
     body: {
-      pl: 'Strzałki <code>&gt;&gt;</code> „wyciągają” dane do zmiennej. W kompi dane wpisujesz <strong>wcześniej</strong> w zakładce <em>Wejście</em> — program ich tam szuka. Każda wartość w nowej linii albo po spacji.',
-      en: 'The arrows <code>&gt;&gt;</code> pull data into a variable. In kompi you type the data <strong>beforehand</strong> in the <em>Input</em> tab — that is where the program reads from. One value per line or separated by spaces.',
+      pl: 'Strzałki <code>&gt;&gt;</code> „wyciągają” dane do zmiennej. W kompi dane wpisujesz <strong>wcześniej</strong> w polu <em>Wejście</em> — program ich tam szuka. Każda wartość w nowej linii albo po spacji.',
+      en: 'The arrows <code>&gt;&gt;</code> pull data into a variable. In kompi you type the data <strong>beforehand</strong> in the <em>Input</em> field — that is where the program reads from. One value per line or separated by spaces.',
     },
     code: 'int a, b;\ncin >> a >> b;\ncout << a + b << endl;',
   },
@@ -622,8 +622,8 @@ export const GLOSSARY: GlossEntry[] = [
     title: { pl: 'Program się nie kończy', en: 'The program never ends' },
     short: { pl: 'Najpewniej pętla, której warunek nigdy nie przestaje być prawdziwy.', en: 'Most likely a loop whose condition never becomes false.' },
     body: {
-      pl: 'Sprawdź, czy wewnątrz pętli zmienia się to, co jest w warunku (np. <code>i++</code>). Uwaga na średnik po <code>while (...)</code> — tworzy pustą pętlę. Inna częsta przyczyna: program czeka na dane z zakładki <em>Wejście</em>, a tam nic nie ma.',
-      en: 'Check that something inside the loop changes what the condition tests (e.g. <code>i++</code>). Watch out for a semicolon right after <code>while (...)</code> — it creates an empty loop. Another common cause: the program waits for data from the <em>Input</em> tab and finds nothing there.',
+      pl: 'Sprawdź, czy wewnątrz pętli zmienia się to, co jest w warunku (np. <code>i++</code>). Uwaga na średnik po <code>while (...)</code> — tworzy pustą pętlę. Inna częsta przyczyna: program czeka na dane z pola <em>Wejście</em>, a tam nic nie ma.',
+      en: 'Check that something inside the loop changes what the condition tests (e.g. <code>i++</code>). Watch out for a semicolon right after <code>while (...)</code> — it creates an empty loop. Another common cause: the program waits for data from the <em>Input</em> field and finds nothing there.',
     },
   },
 
@@ -656,12 +656,12 @@ export const GLOSSARY: GlossEntry[] = [
     id: 'tip-input',
     cat: 'tips',
     tokens: [],
-    match: ['zakładka wejście', 'program czeka', 'cin nic nie robi'],
+    match: ['pole wejście', 'program czeka', 'cin nic nie robi'],
     title: { pl: 'Program czeka na dane — co robić?', en: 'The program waits for data — what now?' },
-    short: { pl: 'Dane dla cin wpisuje się w zakładce „Wejście” przed uruchomieniem.', en: 'Data for cin goes into the “Input” tab before you run.' },
+    short: { pl: 'Dane dla cin wpisuje się w polu „Wejście” przed uruchomieniem.', en: 'Data for cin goes into the “Input” field before you run.' },
     body: {
-      pl: 'Kompilator online nie ma klawiatury w trakcie działania programu. Wszystkie dane przygotuj wcześniej w zakładce <em>Wejście</em> — każda wartość w osobnej linii. Program przeczyta je po kolei.',
-      en: 'An online compiler has no keyboard while the program runs. Prepare all the data beforehand in the <em>Input</em> tab — one value per line. The program reads them in order.',
+      pl: 'Kompilator online nie ma klawiatury w trakcie działania programu. Wszystkie dane przygotuj wcześniej w polu <em>Wejście</em> — każda wartość w osobnej linii. Program przeczyta je po kolei.',
+      en: 'An online compiler has no keyboard while the program runs. Prepare all the data beforehand in the <em>Input</em> field — one value per line. The program reads them in order.',
     },
   },
 ];

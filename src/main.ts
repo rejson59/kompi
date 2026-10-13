@@ -10,6 +10,7 @@ import {
   createSavedCodeWithName,
   ensureActiveCodeItem,
   loadCode,
+  loadStdin,
   normalizeCppTitle,
   settings,
   storeCode,
@@ -19,7 +20,7 @@ import { applyTheme } from './themes';
 import { clearIssues, createEditor, goToLine, insertAtCursor, refreshEditor, setCode, showIssues, showLineReview, type EditorHooks } from './editor';
 import { DEFAULT_CODE } from './examples';
 import { runProgram, type RunResult } from './engines';
-import { analyzeCodeWithKompi, runtimeHint, type KompiCodeReview } from './errors';
+import { analyzeCodeWithKompi, looksLikeMissingInput, runtimeHint, type KompiCodeReview } from './errors';
 import { readFromHash, type SharePayload } from './share';
 import { closeDrawer, closeModal, currentDrawer, h, icon, isModalOpen, openDrawer, rerenderDrawer, toast } from './ui';
 import { glossaryPanel } from './panels/glossary';
@@ -36,6 +37,8 @@ const splitEl = $('split');
 const paneEditor = $('pane-editor');
 const splitter = $('splitter');
 const outputEl = $('output');
+const inputStrip = $('input-strip');
+const stdinArea = $<HTMLInputElement>('stdin-input');
 const runBtn = $<HTMLButtonElement>('btn-run');
 const stopBtn = $<HTMLButtonElement>('btn-stop');
 const runStatus = $('run-status');
@@ -49,6 +52,19 @@ let controller: AbortController | null = null;
 let saveTimer: number | undefined;
 /** kod, który był w edytorze przed otwarciem cudzego linku */
 let myOwnCode: string | null = null;
+/** ostatni wynik programu — dołączany do udostępnianej pracy */
+let lastRunOutput = '';
+
+/* ------- pasek „Wejście” — tylko gdy program czyta dane przez cin ------- */
+function codeReadsInput(code: string): boolean {
+  return /\bcin\s*>>|\bgetline\s*\(|\bscanf\s*\(/.test(code);
+}
+
+function updateInputStrip(code: string): void {
+  inputStrip.classList.toggle('is-hidden', !codeReadsInput(code));
+}
+
+stdinArea.addEventListener('input', () => scheduleSave());
 
 /* ------------------------------- wyjście -------------------------------- */
 function clearOutput(): void {
@@ -107,7 +123,7 @@ async function run(): Promise<void> {
 
   // Automatyczny zapis bieżącego kodu i tytułu w przeglądarce
   autoSaveActiveCode(code, titleInput.value);
-  storeCode(code, '');
+  storeCode(code, stdinArea.value);
 
   if (settings.clearBeforeRun) clearOutput();
   clearIssues(view);
@@ -124,7 +140,7 @@ async function run(): Promise<void> {
   try {
     const result = await runProgram({
       code,
-      stdin: '',
+      stdin: stdinArea.value,
       std: settings.std,
       timeoutMs: settings.timeoutSec * 1000,
       signal: controller.signal,
@@ -172,17 +188,18 @@ function renderKompiReview(review: KompiCodeReview): void {
 
   const listEl = h('div', { class: 'kompi-issue-list' });
   for (const item of review.issues) {
+    const isWarn = item.confidence !== 'certain';
     const row = h(
       'div',
       {
-        class: 'kompi-issue-item',
+        class: `kompi-issue-item${isWarn ? ' is-warn' : ''}`,
         onclick: () => goToLine(view, item.line),
         title: isPl ? 'Kliknij, aby przejść do tej linii' : 'Click to jump to this line',
       },
       h(
         'div',
         { class: 'kompi-issue-top' },
-        h('span', { class: 'kompi-issue-badge', text: t('err.line', { line: item.line }) }),
+        h('span', { class: `kompi-issue-badge${isWarn ? ' is-warn' : ''}`, text: t('err.line', { line: item.line }) }),
         item.codeSnippet
           ? h('code', { class: 'kompi-issue-code', text: item.codeSnippet })
           : null,
@@ -196,8 +213,14 @@ function renderKompiReview(review: KompiCodeReview): void {
     'div',
     { class: 'kompi-review-legend' },
     h('span', { class: 'legend-pill is-ok', text: isPl ? 'Zielony = poprawne' : 'Green = correct' }),
-    h('span', { class: 'legend-pill is-bad', text: isPl ? 'Czerwony = do poprawy' : 'Red = needs fix' }),
+    h('span', {
+      class: 'legend-pill is-warn',
+      text: isPl ? 'Żółty = błąd gdzieś w okolicy' : 'Yellow = error somewhere around',
+    }),
+    h('span', { class: 'legend-pill is-bad', text: isPl ? 'Czerwony = pewny błąd' : 'Red = confirmed error' }),
   );
+
+  const onlyWarnings = review.badLines.length === 0 && review.warnLines.length > 0;
 
   const badCard = h(
     'div',
@@ -209,9 +232,13 @@ function renderKompiReview(review: KompiCodeReview): void {
         { class: 'kompi-review-head-text' },
         h('div', {
           class: 'kompi-review-title',
-          text: isPl
-            ? 'Kompi sprawdził Twój kod — zobacz, co poszło nie tak:'
-            : 'Kompi checked your code — here’s what went wrong:',
+          text: onlyWarnings
+            ? isPl
+              ? 'Kompi nie jest pewien — tu gdzieś może być błąd:'
+              : 'Kompi is not sure — there may be an error somewhere around here:'
+            : isPl
+              ? 'Kompi sprawdził Twój kod — zobacz, co poszło nie tak:'
+              : 'Kompi checked your code — here’s what went wrong:',
         }),
         legendEl,
       ),
@@ -230,8 +257,8 @@ function renderResult(r: RunResult): void {
   const code = view.state.doc.toString();
   const review = analyzeCodeWithKompi(code, r.compileOutput, r.compileFailed);
 
-  /* Podświetl w edytorze poprawne linie na zielono, a błędne na czerwono */
-  showLineReview(view, review.goodLines, review.badLines);
+  /* Podświetl w edytorze poprawne linie na zielono, niepewne na żółto, pewne błędy na czerwono */
+  showLineReview(view, review.goodLines, review.badLines, review.warnLines);
 
   if (!review.ok) {
     showIssues(
@@ -239,7 +266,7 @@ function renderResult(r: RunResult): void {
       review.issues.map((it) => ({
         line: it.line,
         col: 1,
-        severity: 'error',
+        severity: it.confidence === 'certain' ? 'error' : 'warning',
         message: stripHtmlTags(it.explanation),
       })),
     );
@@ -248,26 +275,45 @@ function renderResult(r: RunResult): void {
   /* Pokaż wyjaśnienie Kompiego z boku (w panelu Wyjście) */
   renderKompiReview(review);
 
+  lastRunOutput = r.stdout ?? '';
+
+  /* Wspólne wypisanie wyniku programu — nawet gdy coś się nie udało,
+     wygenerowany wcześniej wynik nie może przepaść. */
+  const printProgramOutput = (label?: string): void => {
+    if (!r.stdout && !r.stderr) return;
+    if (label) outSys(label);
+    if (r.stdout) outText(r.stdout.endsWith('\n') ? r.stdout : `${r.stdout}\n`);
+    if (r.stderr) outText(r.stderr.endsWith('\n') ? r.stderr : `${r.stderr}\n`, 'out-err');
+  };
+
+  const maybeMissingInput = (): void => {
+    if (looksLikeMissingInput(code, stdinArea.value, r.stdout)) {
+      outBlock(t('tip.title'), t('run.waitingInput'));
+    }
+  };
+
   /* --- błąd kompilacji --- */
   if (r.compileFailed) {
+    printProgramOutput(r.stdout || r.stderr ? t('out.partial') : undefined);
     setStatus(t('status.compileFailed'), 'err');
     return;
   }
 
   /* --- przekroczony czas --- */
   if (r.timedOut) {
+    printProgramOutput(r.stdout ? t('out.partial') : undefined);
     outBlock(t('err.title'), escapeHtml(t('run.timeout', { sec: settings.timeoutSec })), 'err');
     setStatus('⏱', 'err');
     return;
   }
 
   /* --- wynik programu --- */
-  if (r.stdout) outText(r.stdout.endsWith('\n') ? r.stdout : `${r.stdout}\n`);
-  if (r.stderr) outText(r.stderr.endsWith('\n') ? r.stderr : `${r.stderr}\n`, 'out-err');
+  printProgramOutput();
   if (!r.stdout && !r.stderr) outSys(t('out.noOutput'));
 
   const hint = runtimeHint(r.exitCode, r.signalName, r.stderr);
   if (hint && r.exitCode !== 0) outBlock(t('tip.title'), hint);
+  maybeMissingInput();
 
   const time = r.timeMs >= 1000 ? `${(r.timeMs / 1000).toFixed(1)} s` : `${r.timeMs} ms`;
   if (r.exitCode === 0 || r.exitCode === null) {
@@ -324,7 +370,7 @@ function scheduleSave(): void {
   window.clearTimeout(saveTimer);
   saveTimer = window.setTimeout(() => {
     const code = view.state.doc.toString();
-    storeCode(code, '');
+    storeCode(code, stdinArea.value);
     autoSaveActiveCode(code, titleInput.value);
   }, 400);
 }
@@ -380,11 +426,16 @@ async function loadFromHash(initial: boolean): Promise<boolean> {
   const p = found.payload;
   if (myOwnCode === null) myOwnCode = view.state.doc.toString();
   setCode(view, p.c);
+  if (typeof p.i === 'string') {
+    stdinArea.value = p.i;
+    scheduleSave();
+  }
   if (p.s) update({ std: p.s });
   if (p.o) {
     clearOutput();
     outSys('— ' + t('share.includeOutput') + ' —');
     outText(p.o.endsWith('\n') ? p.o : `${p.o}\n`);
+    lastRunOutput = p.o;
   }
   showBanner(p);
   if (!initial) toast(t('toast.loadedShared'), 'ok');
@@ -393,7 +444,8 @@ async function loadFromHash(initial: boolean): Promise<boolean> {
 
 /* -------------------------------- edytor --------------------------------- */
 const editorHooks: EditorHooks = {
-  onChange: () => {
+  onChange: (code: string) => {
+    updateInputStrip(code);
     scheduleSave();
   },
   onCursor: () => {
@@ -402,7 +454,7 @@ const editorHooks: EditorHooks = {
   onRun: () => void run(),
   onSave: () => {
     const code = view.state.doc.toString();
-    storeCode(code, '');
+    storeCode(code, stdinArea.value);
     autoSaveActiveCode(code, titleInput.value);
   },
 };
@@ -423,7 +475,9 @@ async function boot(): Promise<void> {
   const savedRaw = loadCode();
   const activeItem = ensureActiveCodeItem(savedRaw ?? DEFAULT_CODE);
   titleInput.value = activeItem.title;
+  stdinArea.value = loadStdin();
   view = createEditor($('editor'), activeItem.code, editorHooks);
+  updateInputStrip(activeItem.code);
 
   initSplitter();
 
@@ -451,7 +505,7 @@ async function boot(): Promise<void> {
       const item = createSavedCodeWithName(file.name || 'przyklad.cpp', text);
       titleInput.value = item.title;
       setCode(view, item.code);
-      storeCode(item.code, '');
+      storeCode(item.code, stdinArea.value);
       clearOutput();
       clearIssues(view);
       toast(`${t('toast.fileLoaded')}: ${item.title}`, 'ok');
@@ -483,7 +537,7 @@ async function boot(): Promise<void> {
       onSelect: (item) => {
         titleInput.value = item.title;
         setCode(view, item.code);
-        storeCode(item.code, '');
+        storeCode(item.code, stdinArea.value);
         clearOutput();
         clearIssues(view);
       },
@@ -501,8 +555,8 @@ async function boot(): Promise<void> {
     openShareModal(() => ({
       code: view.state.doc.toString(),
       title: titleInput.value,
-      stdin: '',
-      output: outputEl.innerText,
+      stdin: stdinArea.value,
+      output: lastRunOutput,
     })),
   );
   $('btn-glossary').addEventListener('click', openGlossary);
