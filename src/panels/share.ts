@@ -29,6 +29,8 @@ export function openShareModal(getCtx: () => ShareContext): void {
     const buildPayload = (): SharePayload => ({
       v: 1,
       c: ctx.code,
+      i: ctx.stdin.trim() || undefined,
+      o: ctx.output.trim() || undefined,
       b: settings.authorName.trim() || undefined,
       s: settings.std,
       l: settings.lang,

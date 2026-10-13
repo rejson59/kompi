@@ -488,6 +488,22 @@ function explainCompilerMsg(msg: string, allKnownWords: string[]): string {
     );
   }
 
+  if (/overflow/i.test(msg) && !/Infinity|NaN/i.test(msg)) {
+    return pick(
+      'Liczba przekroczyła zakres swojego typu — np. <code>int</code> przechowuje maksymalnie ok. 2 miliardy. Sprawdź obliczenia albo użyj typu <code>long long</code>.',
+      'The number went out of its type’s range — e.g. <code>int</code> holds up to about 2 billion. Check the math or use <code>long long</code>.',
+    );
+  }
+  if (/Infinity|division by zero|devide by zero/i.test(msg)) {
+    return pick('Dzielenie przez zero!', 'Division by zero!');
+  }
+  if (/input format mismatch|Memory overflow/i.test(msg)) {
+    return pick(
+      'Program nie mógł wczytać danych — sprawdź, czy w zakładce <code>Wejście</code> wpisano dane w odpowiedniej formie.',
+      'The program could not read input — check that the “Input” tab has data in the right format.',
+    );
+  }
+
   return pick(
     'W tej linii jest błąd składni — sprawdź dokładnie pisownię poleceń, nawiasy i średnik.',
     'Syntax error on this line — double-check command spelling, parentheses, and the semicolon.',
@@ -948,6 +964,21 @@ export function runtimeHint(exitCode: number | null, signalName?: string | null,
   if (sig.includes('FPE') || exitCode === 136) {
     return pick('Dzielenie przez zero!', 'Division by zero!');
   }
+  if (/division by zero|devide by zero|Infinity/i.test(stderr)) {
+    return pick('Dzielenie przez zero!', 'Division by zero!');
+  }
+  if (/input format mismatch|Memory overflow/i.test(stderr)) {
+    return pick(
+      'Program nie mógł wczytać danych — sprawdź, czy w zakładce <code>Wejście</code> wpisano dane w odpowiedniej formie.',
+      'The program could not read input — check that the “Input” tab has data in the right format.',
+    );
+  }
+  if (/overflow/i.test(stderr)) {
+    return pick(
+      'Liczba przekroczyła zakres swojego typu — np. <code>int</code> przechowuje maksymalnie ok. 2 miliardy.',
+      'The number went out of its type’s range — e.g. <code>int</code> holds up to about 2 billion.',
+    );
+  }
   if (exitCode !== null && exitCode !== 0) {
     return pick(
       `Program zakończył się kodem ${exitCode}. Jeśli to nie było zamierzone, upewnij się, że <code>main</code> kończy się <code>return 0;</code>.`,
@@ -957,9 +988,9 @@ export function runtimeHint(exitCode: number | null, signalName?: string | null,
   return null;
 }
 
-export function looksLikeMissingInput(code: string, stdin: string, stdout: string): boolean {
+export function looksLikeMissingInput(code: string, stdin: string, _stdout: string): boolean {
   const readsInput = /\bcin\s*>>|\bgetline\s*\(|\bscanf\s*\(/.test(code);
-  return readsInput && stdin.trim().length === 0 && stdout.trim().length === 0;
+  return readsInput && stdin.trim().length === 0;
 }
 
 function escapeHtml(s: string): string {

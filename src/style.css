@@ -1118,6 +1118,41 @@ kbd {
   font-family: var(--ui-font);
   font-style: italic;
 }
+.input-panel {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.stdin-area {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  resize: none;
+  padding: 14px 16px;
+  border: none;
+  border-radius: var(--r-m);
+  background: var(--ed-bg);
+  box-shadow: var(--neu-inset-deep);
+  color: var(--ed-text);
+  font-family: var(--mono-font);
+  font-size: var(--out-font-size, 14px);
+  line-height: 1.62;
+  outline: none;
+}
+.stdin-area:focus {
+  box-shadow:
+    var(--neu-inset-deep),
+    0 0 0 2px var(--accent-glow);
+}
+.stdin-hint {
+  flex: none;
+  color: var(--text-dim);
+  font-family: var(--ui-font);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
 .out-line {
   display: block;
 }

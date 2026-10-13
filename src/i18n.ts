@@ -85,6 +85,7 @@ const pl = {
   'status.time': 'czas: {t}',
   'out.compilerMsg': 'Komunikaty kompilatora',
   'out.noOutput': '(program nic nie wypisał)',
+  'out.partial': 'Wynik programu wygenerowany przed błędem:',
   'out.crash': 'Program przerwał działanie (sygnał {sig}). Częsta przyczyna: wyjście poza zakres tablicy.',
 
   'offline.title': 'Tryb offline',
@@ -338,6 +339,7 @@ const en: Record<I18nKey, string> = {
   'status.time': 'time: {t}',
   'out.compilerMsg': 'Compiler messages',
   'out.noOutput': '(the program printed nothing)',
+  'out.partial': 'Program output generated before the error:',
   'out.crash': 'The program crashed (signal {sig}). A common cause: going outside an array.',
 
   'offline.title': 'Offline mode',
