@@ -209,3 +209,161 @@ export function cppCompletionSource(context: CompletionContext): CompletionResul
 
   return { from: word.from, options, validFor: /^[A-Za-z_][A-Za-z0-9_]*$/ };
 }
+
+/* ---------- PHP ---------- */
+
+const PHP_KEYWORDS: Item[] = [
+  { label: 'echo', type: 'keyword', detail: { pl: 'wypisz tekst', en: 'print text' }, boost: 90 },
+  { label: 'print', type: 'keyword', detail: { pl: 'wypisz tekst', en: 'print text' } },
+  { label: 'if', type: 'keyword', detail: { pl: 'jeśli', en: 'if' } },
+  { label: 'elseif', type: 'keyword', detail: { pl: 'a jeśli', en: 'else if' } },
+  { label: 'else', type: 'keyword', detail: { pl: 'w przeciwnym razie', en: 'otherwise' } },
+  { label: 'foreach', type: 'keyword', detail: { pl: 'dla każdego elementu', en: 'for each element' } },
+  { label: 'for', type: 'keyword', detail: { pl: 'pętla z licznikiem', en: 'counted loop' } },
+  { label: 'while', type: 'keyword', detail: { pl: 'dopóki', en: 'while' } },
+  { label: 'switch', type: 'keyword', detail: { pl: 'wybór z przypadków', en: 'choose a case' } },
+  { label: 'case', type: 'keyword' },
+  { label: 'break', type: 'keyword', detail: { pl: 'przerwij', en: 'leave' } },
+  { label: 'continue', type: 'keyword', detail: { pl: 'następna iteracja', en: 'next iteration' } },
+  { label: 'function', type: 'keyword', detail: { pl: 'funkcja', en: 'function' } },
+  { label: 'return', type: 'keyword', detail: { pl: 'zwróć wynik', en: 'give back a result' } },
+  { label: 'class', type: 'keyword', detail: { pl: 'klasa', en: 'class' } },
+  { label: 'new', type: 'keyword', detail: { pl: 'nowy obiekt', en: 'new object' } },
+  { label: 'const', type: 'keyword', detail: { pl: 'stała', en: 'constant' } },
+  { label: 'public', type: 'keyword' },
+  { label: 'private', type: 'keyword' },
+  { label: 'static', type: 'keyword' },
+  { label: 'true', type: 'keyword' },
+  { label: 'false', type: 'keyword' },
+  { label: 'null', type: 'keyword' },
+  { label: 'string', type: 'type', detail: { pl: 'tekst', en: 'text' } },
+  { label: 'int', type: 'type', detail: { pl: 'liczba całkowita', en: 'whole number' } },
+  { label: 'float', type: 'type', detail: { pl: 'liczba z przecinkiem', en: 'decimal number' } },
+  { label: 'bool', type: 'type', detail: { pl: 'prawda / fałsz', en: 'true / false' } },
+  { label: 'array', type: 'type', detail: { pl: 'tablica', en: 'array' } },
+];
+
+const PHP_SNIPPETS: Item[] = [
+  {
+    label: 'phptag',
+    type: 'text',
+    snippet: '<?php\n$0\n?>',
+    detail: { pl: 'znaczniki PHP', en: 'PHP open/close tags' },
+    boost: 95,
+  },
+  {
+    label: 'echo',
+    type: 'text',
+    snippet: 'echo "${1:tekst}";',
+    detail: { pl: 'wypisz na ekran', en: 'print to screen' },
+  },
+  {
+    label: 'if',
+    type: 'text',
+    snippet: 'if (${1:warunek}) {\n\t$0\n}',
+    detail: { pl: 'blok if', en: 'if block' },
+  },
+  {
+    label: 'ifelse',
+    type: 'text',
+    snippet: 'if (${1:warunek}) {\n\t$2\n} else {\n\t$0\n}',
+    detail: { pl: 'blok if…else', en: 'if…else block' },
+  },
+  {
+    label: 'foreach',
+    type: 'text',
+    snippet: 'foreach ($${1:tablica} as $${2:element}) {\n\t$0\n}',
+    detail: { pl: 'pętla po tablicy', en: 'loop over an array' },
+  },
+  {
+    label: 'for',
+    type: 'text',
+    snippet: 'for ($${1:i} = ${2:0}; $${1:i} < ${3:10}; $${1:i}++) {\n\t$0\n}',
+    detail: { pl: 'pętla for', en: 'for loop' },
+  },
+  {
+    label: 'while',
+    type: 'text',
+    snippet: 'while (${1:warunek}) {\n\t$0\n}',
+    detail: { pl: 'pętla while', en: 'while loop' },
+  },
+  {
+    label: 'function',
+    type: 'text',
+    snippet: 'function ${1:nazwa}($${2:argument}) {\n\t$0\n}',
+    detail: { pl: 'własna funkcja', en: 'own function' },
+  },
+  {
+    label: 'class',
+    type: 'text',
+    snippet: 'class ${1:Nazwa} {\n\tpublic function __construct($${2:argument}) {\n\t\t$0\n\t}\n}',
+    detail: { pl: 'klasa z konstruktorem', en: 'class with a constructor' },
+  },
+];
+
+const PHP_FUNCTIONS: Item[] = [
+  { label: 'strlen', type: 'function', detail: { pl: 'długość tekstu', en: 'text length' } },
+  { label: 'str_replace', type: 'function', detail: { pl: 'zamień w tekście', en: 'replace in text' } },
+  { label: 'substr', type: 'function', detail: { pl: 'wytnij fragment tekstu', en: 'cut out part of the text' } },
+  { label: 'strpos', type: 'function', detail: { pl: 'gdzie jest fragment', en: 'find position of text' } },
+  { label: 'str_contains', type: 'function', detail: { pl: 'czy zawiera tekst', en: 'does it contain text' } },
+  { label: 'strtolower', type: 'function', detail: { pl: 'małe litery', en: 'lowercase' } },
+  { label: 'strtoupper', type: 'function', detail: { pl: 'duże litery', en: 'uppercase' } },
+  { label: 'trim', type: 'function', detail: { pl: 'usuń spacje z brzegów', en: 'trim spaces' } },
+  { label: 'explode', type: 'function', detail: { pl: 'podziel tekst na tablicę', en: 'split text into array' } },
+  { label: 'implode', type: 'function', detail: { pl: 'sklej tablicę w tekst', en: 'join array into text' } },
+  { label: 'count', type: 'function', detail: { pl: 'ile elementów', en: 'how many elements' } },
+  { label: 'in_array', type: 'function', detail: { pl: 'czy jest w tablicy', en: 'is it in the array' } },
+  { label: 'array_push', type: 'function', detail: { pl: 'dodaj na koniec tablicy', en: 'add to end of array' } },
+  { label: 'array_merge', type: 'function', detail: { pl: 'połącz tablice', en: 'merge arrays' } },
+  { label: 'sort', type: 'function', detail: { pl: 'posortuj tablicę', en: 'sort an array' } },
+  { label: 'isset', type: 'function', detail: { pl: 'czy zmienna istnieje', en: 'does the variable exist' } },
+  { label: 'empty', type: 'function', detail: { pl: 'czy jest puste', en: 'is it empty' } },
+  { label: 'unset', type: 'function', detail: { pl: 'usuń zmienną', en: 'remove a variable' } },
+  { label: 'var_dump', type: 'function', detail: { pl: 'pokaż wartość (debug)', en: 'show value (debug)' } },
+  { label: 'print_r', type: 'function', detail: { pl: 'ładnie wypisz tablicę', en: 'pretty-print array' } },
+  { label: 'number_format', type: 'function', detail: { pl: 'format liczby', en: 'format a number' } },
+  { label: 'round', type: 'function', detail: { pl: 'zaokrąglij', en: 'round' } },
+  { label: 'floor', type: 'function', detail: { pl: 'w dół', en: 'round down' } },
+  { label: 'ceil', type: 'function', detail: { pl: 'w górę', en: 'round up' } },
+  { label: 'abs', type: 'function', detail: { pl: 'wartość bezwzględna', en: 'absolute value' } },
+  { label: 'max', type: 'function', detail: { pl: 'większa wartość', en: 'larger value' } },
+  { label: 'min', type: 'function', detail: { pl: 'mniejsza wartość', en: 'smaller value' } },
+  { label: 'sqrt', type: 'function', detail: { pl: 'pierwiastek', en: 'square root' } },
+  { label: 'pow', type: 'function', detail: { pl: 'potęga', en: 'power' } },
+  { label: 'rand', type: 'function', detail: { pl: 'losowa liczba', en: 'random number' } },
+  { label: 'intval', type: 'function', detail: { pl: 'zamień na liczbę całkowitą', en: 'convert to whole number' } },
+  { label: 'floatval', type: 'function', detail: { pl: 'zamień na liczbę', en: 'convert to number' } },
+  { label: 'strval', type: 'function', detail: { pl: 'zamień na tekst', en: 'convert to text' } },
+  { label: 'json_encode', type: 'function', detail: { pl: 'tablica → JSON', en: 'array → JSON' } },
+  { label: 'json_decode', type: 'function', detail: { pl: 'JSON → tablica', en: 'JSON → array' } },
+  { label: 'htmlspecialchars', type: 'function', detail: { pl: 'bezpieczny HTML', en: 'safe HTML' } },
+  { label: 'date', type: 'function', detail: { pl: 'dzisiejsza data', en: 'current date' } },
+  { label: 'time', type: 'function', detail: { pl: 'czas (sekundy)', en: 'time (seconds)' } },
+  { label: 'fopen', type: 'function', detail: { pl: 'otwórz plik', en: 'open a file' } },
+  { label: 'fread', type: 'function', detail: { pl: 'czytaj z pliku', en: 'read from file' } },
+  { label: 'fwrite', type: 'function', detail: { pl: 'pisz do pliku', en: 'write to file' } },
+  { label: 'fclose', type: 'function', detail: { pl: 'zamknij plik', en: 'close a file' } },
+  { label: 'file_get_contents', type: 'function', detail: { pl: 'cały plik → tekst', en: 'whole file → text' } },
+  { label: 'file_put_contents', type: 'function', detail: { pl: 'tekst → plik', en: 'text → file' } },
+];
+
+export function phpCompletionSource(context: CompletionContext): CompletionResult | null {
+  const word = context.matchBefore(/[A-Za-z_][A-Za-z0-9_]*/);
+  if (!word || (word.from === word.to && !context.explicit)) return null;
+
+  const known = new Set([...PHP_KEYWORDS, ...PHP_FUNCTIONS].map((i) => i.label));
+  const locals = [...new Set(context.state.doc.toString().match(/[A-Za-z_][A-Za-z0-9_]{1,30}/g) ?? [])]
+    .filter((w) => w !== word.text && !known.has(w))
+    .slice(0, 200)
+    .map((w) => ({ label: w, type: 'variable', boost: -10 }));
+
+  const options = [
+    ...PHP_SNIPPETS.map(toCompletion),
+    ...PHP_KEYWORDS.map(toCompletion),
+    ...PHP_FUNCTIONS.map(toCompletion),
+    ...locals,
+  ];
+
+  return { from: word.from, options, validFor: /^[A-Za-z_][A-Za-z0-9_]*$/ };
+}

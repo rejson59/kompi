@@ -28,12 +28,13 @@ import {
   foldKeymap,
 } from '@codemirror/language';
 import { cpp } from '@codemirror/lang-cpp';
+import { php } from '@codemirror/lang-php';
 import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap, acceptCompletion, completionStatus } from '@codemirror/autocomplete';
 import { searchKeymap, highlightSelectionMatches, search } from '@codemirror/search';
 import { lintGutter, setDiagnostics, type Diagnostic } from '@codemirror/lint';
 
 import { settings } from './state';
-import { cppCompletionSource } from './completions';
+import { cppCompletionSource, phpCompletionSource } from './completions';
 import { TOKEN_INDEX } from './glossary';
 import { t } from './i18n';
 import { luminance } from './themes';
@@ -142,6 +143,7 @@ const cGutter = new Compartment();
 const cWrap = new Compartment();
 const cIndent = new Compartment();
 const cBrackets = new Compartment();
+const cLang = new Compartment();
 
 export interface EditorHooks {
   onChange: (code: string) => void;
@@ -234,7 +236,7 @@ export function createEditor(parent: HTMLElement, doc: string, hooks: EditorHook
       search({ top: true }),
       lintGutter(),
       lineReviewField,
-      cpp(),
+      cLang.of(langExt()),
       cCompletion.of(completionExt()),
       cHover.of(settings.hovers ? hoverExtension() : []),
       cWrap.of(settings.wrap ? EditorView.lineWrapping : []),
@@ -260,10 +262,14 @@ function gutterExt(): Extension {
   return settings.lineNumbers ? [lineNumbers(), highlightActiveLineGutter(), foldGutter()] : [];
 }
 
+function langExt(): Extension {
+  return settings.language === 'php' ? php({ plain: true }) : cpp();
+}
+
 function completionExt(): Extension {
   if (!settings.autocomplete) return [];
   return autocompletion({
-    override: [cppCompletionSource],
+    override: [settings.language === 'php' ? phpCompletionSource : cppCompletionSource],
     activateOnTyping: true,
     defaultKeymap: true,
     maxRenderedOptions: 18,
@@ -282,6 +288,7 @@ export function refreshEditor(view: EditorView, hooks: EditorHooks): void {
   view.dispatch({
     effects: [
       cGutter.reconfigure(gutterExt()),
+      cLang.reconfigure(langExt()),
       cCompletion.reconfigure(completionExt()),
       cHover.reconfigure(settings.hovers ? hoverExtension() : []),
       cWrap.reconfigure(settings.wrap ? EditorView.lineWrapping : []),

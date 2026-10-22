@@ -190,3 +190,14 @@ int main() {
 ];
 
 export const DEFAULT_CODE = EXAMPLES[0].code;
+
+/** Domyślny kod dla języka PHP (znacznik <?php może być na początku —
+    silnik online dopisze go sam, gdy go brakuje). */
+export const DEFAULT_PHP_CODE = `<?php
+// Mój pierwszy program w PHP
+echo "Cześć, ze świata PHP!\\n";
+
+$imie = "Ania";
+$wiek = 15;
+echo "Nazywam się $imie i mam $wiek lat.\\n";
+`;

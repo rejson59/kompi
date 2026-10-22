@@ -12,16 +12,17 @@ export interface ShareContext {
   output: string;
 }
 
-function ensureCppFileName(rawTitle: string): string {
-  const clean = (rawTitle || 'powitanie.cpp').trim().replace(/[\\/:*?"<>|]+/g, '_');
-  if (/\.(cpp|cc|cxx|c|h|hpp)$/i.test(clean)) return clean;
-  return `${clean}.cpp`;
+function ensureCodeFileName(rawTitle: string): string {
+  const ext = settings.language === 'php' ? '.php' : '.cpp';
+  const clean = (rawTitle || 'przyklad').trim().replace(/[\\/:*?"<>|]+/g, '_');
+  if (/\.(cpp|cc|cxx|c|h|hpp|php|txt)$/i.test(clean)) return clean.replace(/\.[A-Za-z0-9]{1,6}$/, ext);
+  return `${clean}${ext}`;
 }
 
 export function openShareModal(getCtx: () => ShareContext): void {
   openModal(t('share.title'), (body) => {
     const ctx = getCtx();
-    const fileName = ensureCppFileName(ctx.title);
+    const fileName = ensureCodeFileName(ctx.title);
     let currentLink = '';
 
     const linkInput = h('input', { type: 'text', readonly: 'readonly', spellcheck: 'false' }) as HTMLInputElement;
@@ -34,6 +35,7 @@ export function openShareModal(getCtx: () => ShareContext): void {
       b: settings.authorName.trim() || undefined,
       s: settings.std,
       l: settings.lang,
+      g: settings.language,
     });
 
     const refresh = (): void => {

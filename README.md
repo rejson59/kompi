@@ -1,6 +1,6 @@
 # kompi
 
-**Prosty kompilator C++ online dla uczniów.** Piszesz kod, klikasz „Uruchom”, widzisz wynik —
+**Prosty kompilator C++ i PHP online dla uczniów.** Piszesz kod, klikasz „Uruchom”, widzisz wynik —
 a gotową pracę wysyłasz nauczycielowi jednym linkiem. Działa w przeglądarce, nic nie trzeba instalować.
 
 🔗 **Strona:** https://rejson59.github.io/kompi/
@@ -11,7 +11,8 @@ a gotową pracę wysyłasz nauczycielowi jednym linkiem. Działa w przeglądarce
 
 | | |
 |---|---|
-| ▶️ **Uruchamianie kodu** | Prawdziwy `g++` przez darmowe serwery (Piston → Compiler Explorer → Wandbox). Gdy internet nie działa albo szkoła blokuje serwery — automatycznie włącza się **tryb offline** liczony w przeglądarce (podstawy C++). |
+| ▶️ **Uruchamianie kodu** | **Najpierw prawdziwy kompilator online** (Piston → Compiler Explorer → Wandbox). Tryb offline w przeglądarce (podstawy C++) włącza się tylko awaryjnie — gdy internet nie działa albo szkoła blokuje serwery. |
+| 🐘 **C++ albo PHP** | Przełącznik języka przy tytule kodu. PHP uruchamia się przez internet (Piston) i nie przechodzi recenzji Kompiego (ta zna C++). |
 | ⌨️ **Edytor** | Kolorowanie składni, numery linii, zwijanie bloków, szukanie (`Ctrl+F`), komentowanie (`Ctrl+/`), podkreślanie błędów kompilatora w kodzie. |
 | 💡 **Autouzupełnianie** | Podpowiedzi podczas pisania (zatwierdzasz **Tab**), gotowe wzorce (`for`, `if`, `main`, `cout`…) i nazwy Twoich własnych zmiennych. Można wyłączyć w ustawieniach. |
 | 📖 **Słowniczek** | Ikona książki z pytajnikiem. Wpisujesz, czego nie rozumiesz (np. „pętla”, „tablica”, „cout”) i dostajesz krótkie wyjaśnienie prostym językiem + przykład do wklejenia. Działa też po najechaniu myszką na słowo w kodzie. |
@@ -62,10 +63,11 @@ npm run build    # gotowa strona ląduje w katalogu dist/
 
 - **Frontend:** Vite + TypeScript, edytor [CodeMirror 6](https://codemirror.net/), zero frameworków.
 - **Kompilacja online:** publiczne API [Piston](https://github.com/engineer-man/piston),
-  [Compiler Explorer](https://godbolt.org/) i [Wandbox](https://wandbox.org/) — próbowane po kolei,
-  ostatnio działające idzie na początek listy.
+  [Compiler Explorer](https://godbolt.org/) i [Wandbox](https://wandbox.org/) — zawsze pierwsze
+  w kolejności, ostatnio działające idzie na początek listy. PHP jeździ przez Piston.
 - **Tryb offline:** [JSCPP](https://github.com/felixhao28/JSCPP) uruchamiany w Web Workerze
-  (osobny wątek, więc nieskończona pętla nie zawiesza strony). Obsługuje `iostream`, `cmath`,
+  (osobny wątek, więc nieskończona pętla nie zawiesza strony) — **tylko awaryjnie**, gdy serwery
+  online nie odpowiadają, bo bywa błędny. Obsługuje `iostream`, `cmath`,
   `cstring`, `cstdio`, zmienne, tablice, pętle, warunki i funkcje — bez `string`, `vector` i klas.
 - **Linki:** kod jest pakowany (LZ-String) do adresu po `#`, więc nigdy nie trafia na żaden serwer.
   „Skróć link” korzysta z darmowych schowków w sieci, a gdy żaden nie działa — zostaje pełny link.
@@ -74,10 +76,10 @@ npm run build    # gotowa strona ląduje w katalogu dist/
 
 ### English in short
 
-**kompi** is a small online C++ compiler built for a school class: an editor, an output panel,
+**kompi** is a small online C++ and PHP compiler built for a school class: an editor, an output panel,
 Polish/English interface, a plain-language glossary (book icon), Tab autocompletion, themes
 (light / gray / dark / deep black / custom), a horizontal or vertical layout, and one-link sharing
 of your work. It is a static site hosted on GitHub Pages; code is compiled by free public
-`g++` services, with an in-browser fallback when the network is unavailable.
+`g++`/PHP services first, with an in-browser fallback only when the network is unavailable.
 
 MIT © rejson59
