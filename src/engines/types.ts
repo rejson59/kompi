@@ -1,8 +1,10 @@
-import type { EngineId } from '../state';
+import type { EngineId, ProgLang } from '../state';
 
 export interface RunRequest {
   code: string;
   stdin: string;
+  /** język programowania: C++ albo PHP */
+  language: ProgLang;
   std: string;
   timeoutMs: number;
   signal: AbortSignal;

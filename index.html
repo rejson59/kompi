@@ -110,6 +110,16 @@
               autocomplete="off"
               data-i18n-title="saved.titleTooltip"
             />
+            <select
+              id="prog-lang"
+              class="lang-select"
+              data-i18n-title="code.language"
+              title="Język programowania"
+              aria-label="Język programowania"
+            >
+              <option value="cpp">C++</option>
+              <option value="php">PHP</option>
+            </select>
             <div class="spacer"></div>
             <div class="pane-head-actions">
               <button
@@ -121,7 +131,7 @@
               >
                 <svg class="i"><use href="#i-upload" /></svg>
               </button>
-              <input id="file-upload-cpp" type="file" accept=".cpp,.cc,.cxx,.c,.h,.hpp,.txt" hidden />
+              <input id="file-upload-cpp" type="file" accept=".cpp,.cc,.cxx,.c,.h,.hpp,.txt,.php" hidden />
               <button
                 id="btn-saved-list"
                 class="icon-btn icon-btn-pane"

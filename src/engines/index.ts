@@ -4,6 +4,7 @@
      odpytuje równolegle najszybsze kompilatory online bez pokazywania komunikatów technicznych. */
 
 import { settings, type EngineId } from '../state';
+import { t } from '../i18n';
 import * as piston from './piston';
 import * as wandbox from './wandbox';
 import * as godbolt from './godbolt';
@@ -69,36 +70,71 @@ function raceBestResult(req: RunRequest, promises: Array<Promise<RunResult>>): P
   });
 }
 
-/** raceBestResult z budżetem czasu — po upływie zwraca wynik zapasowy,
-    żeby w szkole z zablokowaną siecią nie czekać w nieskończoność. */
-function raceWithBudget(
-  req: RunRequest,
-  promises: Array<Promise<RunResult>>,
-  fallback: RunResult,
-  budgetMs: number,
-): Promise<RunResult> {
+/** Serwery online zawsze pierwsze — lokalny silnik (JSCPP) bywa błędny,
+    więc używamy go tylko awaryjnie: gdy sieć nie działa albo nie odpowiada
+    w budżecie czasu (szkoły z zablokowanym internetem). */
+function onlineFirst(req: RunRequest, promises: Array<Promise<RunResult>>, budgetMs: number): Promise<RunResult> {
   return new Promise<RunResult>((resolve, reject) => {
     let settled = false;
-    const finish = (r: RunResult): void => {
+    const goOffline = () => {
       if (settled) return;
       settled = true;
-      resolve(r);
+      offline.run(req).then(
+        (r) => resolve({ ...r, note: t('run.fallbackOffline') }),
+        (err) => reject(err),
+      );
     };
-    const bail = (err: unknown): void => {
-      if (settled) return;
-      settled = true;
-      if (err instanceof DOMException && err.name === 'AbortError') reject(err);
-      else resolve(fallback);
-    };
-    raceBestResult(req, promises).then(finish, bail);
-    setTimeout(() => bail(null), budgetMs);
+    raceBestResult(req, promises).then(
+      (res) => {
+        if (!settled) {
+          settled = true;
+          resolve(res);
+        }
+      },
+      (err) => {
+        if (settled) return;
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          settled = true;
+          reject(err);
+          return;
+        }
+        goOffline();
+      },
+    );
+    setTimeout(goOffline, budgetMs);
   });
+}
+
+/** Kod PHP bez znacznika <?php nie uruchomi się — dopisujemy go w tej samej linii,
+    żeby numeracja linii w błędach się zgadzała. */
+function ensurePhpOpenTag(code: string): string {
+  return /<\?(php|=)/i.test(code) ? code : `<?php ${code}`;
 }
 
 export async function runProgram(req: RunRequest): Promise<RunResult> {
   if (req.signal.aborted) throw new DOMException('stopped', 'AbortError');
 
-  // Jeśli użytkownik wybrał konkretny silnik
+  // PHP: tylko przez internet (Piston) — lokalny silnik C++ go nie obsługuje
+  if (req.language === 'php') {
+    try {
+      return await piston.run({ ...req, code: ensurePhpOpenTag(req.code) });
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') throw err;
+      return {
+        engine: 'piston',
+        engineLabel: 'Piston · PHP',
+        compileOutput: '',
+        stdout: '',
+        stderr: '',
+        exitCode: null,
+        compileFailed: true,
+        timeMs: 0,
+        note: t('run.phpOffline'),
+      };
+    }
+  }
+
+  // Jeśli użytkownik wybrał konkretny silnik C++
   if (settings.engine !== 'auto') {
     try {
       return await RUNNERS[settings.engine](req);
@@ -108,25 +144,8 @@ export async function runProgram(req: RunRequest): Promise<RunResult> {
     }
   }
 
-  const onlineRunners = (): Array<Promise<RunResult>> => [godbolt.run(req), wandbox.run(req), piston.run(req)];
-
-  // Tryb domyślny: jeśli kod nie wymaga zaawansowanego STL — wykonaj natychmiast lokalnie (~5 ms)
-  const needsOnline = offline.unsupportedFeatures(req.code).length > 0;
-  if (!needsOnline) {
-    const local = await offline.run(req);
-    if (!local.compileFailed) return local;
-    // Lokalny silnik nie dał rady — spróbuj prawdziwym g++ online, żeby mimo
-    // zgłoszonego błędu wygenerować wynik. Gdy sieć nie działa — zostaje błąd lokalny.
-    return await raceWithBudget(req, onlineRunners(), local, 7000);
-  }
-
-  // Jeśli kod używa np. vector/string/algorithm — uruchom równolegle kompilatory online i weź najlepszą odpowiedź
-  try {
-    return await raceBestResult(req, onlineRunners());
-  } catch (err) {
-    if (err instanceof DOMException && err.name === 'AbortError') throw err;
-    return await offline.run(req);
-  }
+  // Auto: prawdziwy g++ online zawsze pierwszy; lokalny silnik tylko awaryjnie
+  return await onlineFirst(req, [godbolt.run(req), wandbox.run(req), piston.run(req)], 12000);
 }
 
 /** Szybkie sprawdzenie, czy dany kompilator odpowiada z tej sieci. */
@@ -138,6 +157,7 @@ export async function testEngine(id: Exclude<EngineId, 'auto'>): Promise<{ ok: b
     const res = await RUNNERS[id]({
       code: 'int main(){return 0;}',
       stdin: '',
+      language: 'cpp',
       std: 'c++17',
       timeoutMs: 5000,
       signal: ctrl.signal,

@@ -15,10 +15,11 @@ import {
   settings,
   storeCode,
   update,
+  type ProgLang,
 } from './state';
 import { applyTheme } from './themes';
 import { clearIssues, createEditor, goToLine, insertAtCursor, refreshEditor, setCode, showIssues, showLineReview, type EditorHooks } from './editor';
-import { DEFAULT_CODE } from './examples';
+import { DEFAULT_CODE, DEFAULT_PHP_CODE } from './examples';
 import { runProgram, type RunResult } from './engines';
 import { analyzeCodeWithKompi, looksLikeMissingInput, runtimeHint, type KompiCodeReview } from './errors';
 import { readFromHash, type SharePayload } from './share';
@@ -43,6 +44,7 @@ const runBtn = $<HTMLButtonElement>('btn-run');
 const stopBtn = $<HTMLButtonElement>('btn-stop');
 const runStatus = $('run-status');
 const titleInput = $<HTMLInputElement>('code-title-input');
+const progLangSelect = $<HTMLSelectElement>('prog-lang');
 const banner = $('shared-banner');
 const bannerText = $('shared-banner-text');
 
@@ -55,13 +57,40 @@ let myOwnCode: string | null = null;
 /** ostatni wynik programu — dołączany do udostępnianej pracy */
 let lastRunOutput = '';
 
-/* ------- pasek „Wejście” — tylko gdy program czyta dane przez cin ------- */
+/* ------- pasek „Wejście” — tylko gdy program czyta dane z wejścia ------- */
 function codeReadsInput(code: string): boolean {
-  return /\bcin\s*>>|\bgetline\s*\(|\bscanf\s*\(/.test(code);
+  return settings.language === 'php'
+    ? /\bSTDIN\b|fgets\s*\(|fgetc\s*\(|stream_get_line|fscanf\s*\(/.test(code)
+    : /\bcin\s*>>|\bgetline\s*\(|\bscanf\s*\(/.test(code);
 }
 
 function updateInputStrip(code: string): void {
   inputStrip.classList.toggle('is-hidden', !codeReadsInput(code));
+}
+
+/* ------- przełącznik języka programowania: C++ / PHP ------- */
+function defaultCodeFor(lang: ProgLang): string {
+  return lang === 'php' ? DEFAULT_PHP_CODE : DEFAULT_CODE;
+}
+
+function titleWithExt(title: string, lang: ProgLang): string {
+  const ext = lang === 'php' ? '.php' : '.cpp';
+  const clean = title.trim() || (settings.lang === 'pl' ? 'przyklad' : 'example');
+  return /\.[A-Za-z0-9]{1,6}$/.test(clean) ? clean.replace(/\.[A-Za-z0-9]{1,6}$/, ext) : clean + ext;
+}
+
+function setProgLang(next: ProgLang, opts: { swapDefaultCode?: boolean; autosave?: boolean } = {}): void {
+  const prev = settings.language;
+  const prevDefault = defaultCodeFor(prev);
+  update({ language: next });
+  progLangSelect.value = next;
+  refreshEditor(view, editorHooks);
+  titleInput.value = titleWithExt(titleInput.value, next);
+  if (opts.swapDefaultCode && view.state.doc.toString() === prevDefault) {
+    setCode(view, defaultCodeFor(next));
+  }
+  updateInputStrip(view.state.doc.toString());
+  if (opts.autosave !== false) autoSaveActiveCode(view.state.doc.toString(), titleInput.value);
 }
 
 stdinArea.addEventListener('input', () => scheduleSave());
@@ -141,6 +170,7 @@ async function run(): Promise<void> {
     const result = await runProgram({
       code,
       stdin: stdinArea.value,
+      language: settings.language,
       std: settings.std,
       timeoutMs: settings.timeoutSec * 1000,
       signal: controller.signal,
@@ -255,27 +285,37 @@ function stripHtmlTags(s: string): string {
 
 function renderResult(r: RunResult): void {
   const code = view.state.doc.toString();
-  const review = analyzeCodeWithKompi(code, r.compileOutput, r.compileFailed);
+  const isPhp = settings.language === 'php';
 
-  /* Podświetl w edytorze poprawne linie na zielono, niepewne na żółto, pewne błędy na czerwono */
-  showLineReview(view, review.goodLines, review.badLines, review.warnLines);
+  /* Recenzja Kompiego — tylko dla C++ (analizator zna C++, nie PHP) */
+  if (isPhp) {
+    showLineReview(view, [], [], []);
+  } else {
+    const review = analyzeCodeWithKompi(code, r.compileOutput, r.compileFailed);
 
-  if (!review.ok) {
-    showIssues(
-      view,
-      review.issues.map((it) => ({
-        line: it.line,
-        col: 1,
-        severity: it.confidence === 'certain' ? 'error' : 'warning',
-        message: stripHtmlTags(it.explanation),
-      })),
-    );
+    /* Podświetl w edytorze poprawne linie na zielono, niepewne na żółto, pewne błędy na czerwono */
+    showLineReview(view, review.goodLines, review.badLines, review.warnLines);
+
+    if (!review.ok) {
+      showIssues(
+        view,
+        review.issues.map((it) => ({
+          line: it.line,
+          col: 1,
+          severity: it.confidence === 'certain' ? 'error' : 'warning',
+          message: stripHtmlTags(it.explanation),
+        })),
+      );
+    }
+
+    /* Pokaż wyjaśnienie Kompiego z boku (w panelu Wyjście) */
+    renderKompiReview(review);
   }
 
-  /* Pokaż wyjaśnienie Kompiego z boku (w panelu Wyjście) */
-  renderKompiReview(review);
-
   lastRunOutput = r.stdout ?? '';
+
+  /* Nota od silnika (np. awaryjny tryb offline) */
+  if (r.note) outSys(r.note, 'out-sys out-warn');
 
   /* Wspólne wypisanie wyniku programu — nawet gdy coś się nie udało,
      wygenerowany wcześniej wynik nie może przepaść. */
@@ -311,7 +351,11 @@ function renderResult(r: RunResult): void {
   printProgramOutput();
   if (!r.stdout && !r.stderr) outSys(t('out.noOutput'));
 
-  const hint = runtimeHint(r.exitCode, r.signalName, r.stderr);
+  const hint = isPhp
+    ? r.stderr && r.exitCode !== 0
+      ? t('run.phpHint')
+      : ''
+    : runtimeHint(r.exitCode, r.signalName, r.stderr);
   if (hint && r.exitCode !== 0) outBlock(t('tip.title'), hint);
   maybeMissingInput();
 
@@ -425,6 +469,8 @@ async function loadFromHash(initial: boolean): Promise<boolean> {
   if (!found) return false;
   const p = found.payload;
   if (myOwnCode === null) myOwnCode = view.state.doc.toString();
+  const wantLang: ProgLang = p.g === 'php' ? 'php' : 'cpp';
+  if (wantLang !== settings.language) setProgLang(wantLang, { autosave: false });
   setCode(view, p.c);
   if (typeof p.i === 'string') {
     stdinArea.value = p.i;
@@ -473,11 +519,17 @@ async function boot(): Promise<void> {
   applyLayout();
 
   const savedRaw = loadCode();
-  const activeItem = ensureActiveCodeItem(savedRaw ?? DEFAULT_CODE);
-  titleInput.value = activeItem.title;
+  const activeItem = ensureActiveCodeItem(savedRaw ?? defaultCodeFor(settings.language));
+  titleInput.value = titleWithExt(activeItem.title, settings.language);
   stdinArea.value = loadStdin();
   view = createEditor($('editor'), activeItem.code, editorHooks);
   updateInputStrip(activeItem.code);
+
+  /* przełącznik języka programowania (C++ / PHP) */
+  progLangSelect.value = settings.language;
+  progLangSelect.addEventListener('change', () => {
+    setProgLang(progLangSelect.value === 'php' ? 'php' : 'cpp', { swapDefaultCode: true });
+  });
 
   initSplitter();
 
@@ -486,7 +538,7 @@ async function boot(): Promise<void> {
 
   /* zmiana tytułu kodu (np. przyklad.cpp) i lista ostatnich kodów */
   titleInput.addEventListener('change', () => {
-    const clean = normalizeCppTitle(titleInput.value, settings.lang === 'pl' ? 'przyklad.cpp' : 'example.cpp');
+    const clean = titleWithExt(normalizeCppTitle(titleInput.value, ''), settings.language);
     titleInput.value = clean;
     autoSaveActiveCode(view.state.doc.toString(), clean);
   });

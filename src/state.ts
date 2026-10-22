@@ -1,6 +1,7 @@
 /* Ustawienia aplikacji + zapis w przeglądarce (localStorage). */
 
 export type Lang = 'pl' | 'en';
+export type ProgLang = 'cpp' | 'php';
 export type ThemeName = 'dark' | 'light' | 'gray' | 'black' | 'custom';
 export type Layout = 'row' | 'column';
 export type EngineId = 'auto' | 'piston' | 'wandbox' | 'godbolt' | 'offline';
@@ -16,6 +17,8 @@ export interface CustomTheme {
 
 export interface Settings {
   lang: Lang;
+  /* język programowania */
+  language: ProgLang;
   /* wygląd */
   theme: ThemeName;
   custom: CustomTheme;
@@ -52,6 +55,7 @@ export const STDIN_KEY = 'kompi.stdin.v1';
 
 export const DEFAULTS: Settings = {
   lang: (navigator.language || 'pl').toLowerCase().startsWith('pl') ? 'pl' : 'en',
+  language: 'cpp',
   theme: 'dark',
   custom: { base: 'dark', bg: '#222731', panel: '#222731', editor: '#1c2029', text: '#e8ecf3', accent: '#7c5cff' },
   layout: 'row',

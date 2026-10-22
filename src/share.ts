@@ -5,7 +5,7 @@
       zostaje tylko kilka znaków (#s=...). Adres nadal jest Twój (GitHub Pages). */
 
 import LZString from 'lz-string';
-import type { Lang } from './state';
+import type { Lang, ProgLang } from './state';
 
 export interface SharePayload {
   v: 1;
@@ -15,6 +15,8 @@ export interface SharePayload {
   b?: string;
   s?: string;
   l?: Lang;
+  /** język programowania: 'cpp' | 'php' */
+  g?: ProgLang;
 }
 
 export function encodePayload(p: SharePayload): string {

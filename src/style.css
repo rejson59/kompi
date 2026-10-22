@@ -2581,6 +2581,30 @@ input[type='range']::-moz-range-thumb {
   box-shadow: var(--neu-inset-sm), 0 0 0 2px var(--accent-soft);
 }
 
+/* ------- Przełącznik języka programowania (C++ / PHP) ------- */
+.lang-select {
+  height: 30px;
+  padding: 0 8px;
+  margin-left: 8px;
+  border-radius: 9px;
+  border: none;
+  background: var(--bg);
+  box-shadow: var(--neu-inset-sm);
+  color: var(--accent);
+  font-family: var(--mono-font);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  outline: none;
+  transition: box-shadow var(--dur) ease, color var(--dur) ease;
+}
+.lang-select:hover {
+  color: var(--text);
+}
+.lang-select:focus {
+  box-shadow: var(--neu-inset-sm), 0 0 0 2px var(--accent-soft);
+}
+
 .icon-btn-pane {
   width: 30px;
   height: 30px;

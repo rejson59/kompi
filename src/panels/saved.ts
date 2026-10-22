@@ -1,7 +1,7 @@
 /* Okno „Ostatnie kody” — automatycznie zapisywane kody w przeglądarce
    z możliwością zmiany tytułu (np. przyklad.cpp, nowy1.cpp), wczytania, usunięcia lub utworzenia nowego kodu. */
 
-import { DEFAULT_CODE } from '../examples';
+import { DEFAULT_CODE, DEFAULT_PHP_CODE } from '../examples';
 import { t } from '../i18n';
 import {
   clearAllSavedCodes,
@@ -16,6 +16,11 @@ import {
   type SavedCodeItem,
 } from '../state';
 import { closeModal, h, icon, openModal, toast } from '../ui';
+
+/** Domyślny kod dla aktualnego języka programowania (C++ / PHP). */
+function defaultCode(): string {
+  return settings.language === 'php' ? DEFAULT_PHP_CODE : DEFAULT_CODE;
+}
 
 export interface SavedModalCallbacks {
   onSelect: (item: SavedCodeItem) => void;
@@ -50,7 +55,7 @@ export function openSavedCodesModal(cb: SavedModalCallbacks): void {
             type: 'button',
             class: 'btn btn-mini btn-primary',
             onclick: () => {
-              const created = createNewSavedCode(DEFAULT_CODE);
+              const created = createNewSavedCode(defaultCode());
               cb.onSelect(created);
               closeModal();
             },
@@ -82,7 +87,7 @@ export function openSavedCodesModal(cb: SavedModalCallbacks): void {
               class: 'btn btn-mini btn-danger-soft',
               onclick: () => {
                 clearAllSavedCodes();
-                const fresh = ensureActiveCodeItem(DEFAULT_CODE);
+                const fresh = ensureActiveCodeItem(defaultCode());
                 cb.onSelect(fresh);
                 renderList();
               },
@@ -162,7 +167,7 @@ export function openSavedCodesModal(cb: SavedModalCallbacks): void {
                     deleteSavedCode(item.id);
                     const remaining = loadSavedCodes();
                     if (remaining.length === 0) {
-                      const fresh = ensureActiveCodeItem(DEFAULT_CODE);
+                      const fresh = ensureActiveCodeItem(defaultCode());
                       cb.onSelect(fresh);
                     } else if (isCurrent && remaining[0]) {
                       setActiveCodeId(remaining[0].id);

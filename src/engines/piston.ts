@@ -1,9 +1,13 @@
-/* Piston (emkc.org) — darmowe publiczne API z prawdziwym g++. */
+/* Piston (emkc.org) — darmowe publiczne API z prawdziwym g++ i PHP. */
 
 import { EngineUnavailable, fetchJson, type RunRequest, type RunResult } from './types';
 
 const API = 'https://emkc.org/api/v2/piston';
-let cachedVersion: string | null = null;
+const cachedVersions = new Map<string, string>();
+
+const pistonLang = (req: RunRequest): string => (req.language === 'php' ? 'php' : 'c++');
+
+const FALLBACK_VERSIONS: Record<string, string> = { 'c++': '10.2.0', php: '8.2.0' };
 
 interface PistonStage {
   stdout?: string;
@@ -21,24 +25,30 @@ interface PistonResponse {
 }
 
 async function resolveVersion(req: RunRequest): Promise<string> {
-  if (cachedVersion) return cachedVersion;
+  const lang = pistonLang(req);
+  const cached = cachedVersions.get(lang);
+  if (cached) return cached;
   const { data } = await fetchJson(`${API}/runtimes`, { method: 'GET' }, 8000, req.signal);
   const list = Array.isArray(data) ? (data as Array<{ language: string; version: string; aliases?: string[] }>) : [];
   const rt =
-    list.find((r) => r.language === 'c++' || (r.aliases ?? []).includes('c++')) ??
-    list.find((r) => r.language === 'cpp' || (r.aliases ?? []).includes('cpp'));
-  cachedVersion = rt?.version ?? '10.2.0';
-  return cachedVersion;
+    lang === 'php'
+      ? list.find((r) => r.language === 'php' || (r.aliases ?? []).includes('php'))
+      : (list.find((r) => r.language === 'c++' || (r.aliases ?? []).includes('c++')) ??
+        list.find((r) => r.language === 'cpp' || (r.aliases ?? []).includes('cpp')));
+  const version = rt?.version ?? FALLBACK_VERSIONS[lang];
+  cachedVersions.set(lang, version);
+  return version;
 }
 
 export async function run(req: RunRequest): Promise<RunResult> {
   const started = performance.now();
-  const version = await resolveVersion(req).catch(() => '10.2.0');
+  const lang = pistonLang(req);
+  const version = await resolveVersion(req).catch(() => FALLBACK_VERSIONS[lang]);
 
   const body = {
-    language: 'c++',
+    language: lang,
     version,
-    files: [{ name: 'main.cpp', content: req.code }],
+    files: [{ name: lang === 'php' ? 'main.php' : 'main.cpp', content: req.code }],
     stdin: req.stdin,
     args: [] as string[],
     compile_timeout: 10000,
@@ -59,7 +69,7 @@ export async function run(req: RunRequest): Promise<RunResult> {
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ language: 'c++', version, files: body.files, stdin: req.stdin }),
+        body: JSON.stringify({ language: lang, version, files: body.files, stdin: req.stdin }),
       },
       req.timeoutMs + 15000,
       req.signal,
@@ -82,7 +92,7 @@ export async function run(req: RunRequest): Promise<RunResult> {
 
   return {
     engine: 'piston',
-    engineLabel: `Piston · g++ ${r.version ?? version}`,
+    engineLabel: lang === 'php' ? `Piston · PHP ${r.version ?? version}` : `Piston · g++ ${r.version ?? version}`,
     compileOutput: compileOut,
     stdout: runStage.stdout ?? '',
     stderr: runStage.stderr ?? '',
