@@ -73,7 +73,8 @@ const pl = {
   'run.noEngines':
     'Nie udało się połączyć z żadnym kompilatorem online. Sprawdź internet albo wybierz w ustawieniach tryb offline.',
   'run.fallbackOffline': 'Brak połączenia z kompilatorem online — uruchamiam w trybie offline (obsługuje podstawy C++).',
-  'run.phpOffline': 'Brak połączenia z kompilatorem PHP online — sprawdź internet i spróbuj jeszcze raz.',
+  'run.fallbackLocalPhp': 'Serwery online nie odpowiadają — uruchamiam PHP lokalnie w przeglądarce.',
+  'run.phpOffline': 'Nie udało się uruchomić PHP ani online, ani lokalnie — odśwież stronę i spróbuj jeszcze raz.',
   'run.phpHint': 'PHP sam podaje miejsce błędu — czerwony komunikat kończy się numerem linii.',
   'run.emptyCode': 'Edytor jest pusty — napisz najpierw jakiś kod.',
   'run.stopped': 'Zatrzymano.',
@@ -331,7 +332,8 @@ const en: Record<I18nKey, string> = {
   'run.noEngines':
     'Could not reach any online compiler. Check your internet connection or switch to offline mode in settings.',
   'run.fallbackOffline': 'No online compiler available — running in offline mode (supports C++ basics).',
-  'run.phpOffline': 'No online PHP compiler available — check your internet connection and try again.',
+  'run.fallbackLocalPhp': 'Online servers are not responding — running PHP locally in the browser.',
+  'run.phpOffline': 'Could not run PHP online or locally — refresh the page and try again.',
   'run.phpHint': 'PHP itself reports where the error is — the red message ends with a line number.',
   'run.emptyCode': 'The editor is empty — write some code first.',
   'run.stopped': 'Stopped.',

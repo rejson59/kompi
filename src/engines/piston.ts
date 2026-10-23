@@ -7,7 +7,9 @@ const cachedVersions = new Map<string, string>();
 
 const pistonLang = (req: RunRequest): string => (req.language === 'php' ? 'php' : 'c++');
 
-const FALLBACK_VERSIONS: Record<string, string> = { 'c++': '10.2.0', php: '8.2.0' };
+/** Wersje zapasowe — Piston przyjmuje selektory semver, więc '*' zawsze trafi
+    w zainstalowaną wersję (dokładna liczba bywa nieaktualna). */
+const FALLBACK_VERSIONS: Record<string, string> = { 'c++': '*', php: '*' };
 
 interface PistonStage {
   stdout?: string;
@@ -62,14 +64,15 @@ export async function run(req: RunRequest): Promise<RunResult> {
     req.signal,
   );
 
-  // niektóre instancje nie pozwalają ustawiać limitów — próbujemy bez nich
+  // 400: albo instancja nie przyjmuje limitów, albo wersja nie trafiła —
+  // wtedy ponawiamy bez limitów i z selektorem '*', który pasuje do każdej wersji.
   if (status >= 400) {
     const retry = await fetchJson(
       `${API}/execute`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ language: lang, version, files: body.files, stdin: req.stdin }),
+        body: JSON.stringify({ language: lang, version: '*', files: body.files, stdin: req.stdin }),
       },
       req.timeoutMs + 15000,
       req.signal,
@@ -77,6 +80,22 @@ export async function run(req: RunRequest): Promise<RunResult> {
     status = retry.status;
     data = retry.data;
     text = retry.text;
+    if (status >= 400 && version !== '*') {
+      // ostatnia szansa: oryginalna wersja bez limitów (gdy '*' nie pasuje)
+      const last = await fetchJson(
+        `${API}/execute`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ language: lang, version, files: body.files, stdin: req.stdin }),
+        },
+        req.timeoutMs + 15000,
+        req.signal,
+      );
+      status = last.status;
+      data = last.data;
+      text = last.text;
+    }
   }
 
   if (status >= 400 || !data) {
@@ -88,7 +107,9 @@ export async function run(req: RunRequest): Promise<RunResult> {
   const compile = r.compile ?? {};
   const runStage = r.run ?? {};
   const compileOut = [compile.stdout, compile.stderr].filter(Boolean).join('\n').trim();
-  const compileFailed = (compile.code ?? 0) !== 0;
+  // PHP: błąd składni („Parse error”) to pewny błąd „kompilacji”; w C++ decyduje etap compile
+  const phpParseError = lang === 'php' && /\bParse error\b/.test(`${runStage.stderr ?? ''}${runStage.stdout ?? ''}`);
+  const compileFailed = phpParseError || (compile.code ?? 0) !== 0;
 
   return {
     engine: 'piston',
