@@ -9,6 +9,8 @@ import * as piston from './piston';
 import * as wandbox from './wandbox';
 import * as godbolt from './godbolt';
 import * as offline from './offline';
+import * as phpLocal from './phpLocal';
+import { ensurePhpOpenTag } from './phpSupport';
 import type { RunRequest, RunResult } from './types';
 
 export type { RunRequest, RunResult } from './types';
@@ -70,17 +72,23 @@ function raceBestResult(req: RunRequest, promises: Array<Promise<RunResult>>): P
   });
 }
 
-/** Serwery online zawsze pierwsze — lokalny silnik (JSCPP) bywa błędny,
-    więc używamy go tylko awaryjnie: gdy sieć nie działa albo nie odpowiada
-    w budżecie czasu (szkoły z zablokowanym internetem). */
-function onlineFirst(req: RunRequest, promises: Array<Promise<RunResult>>, budgetMs: number): Promise<RunResult> {
+/** Serwery online zawsze pierwsze — lokalny silnik bywa gorszy od prawdziwego
+    kompilatora, więc używamy go tylko awaryjnie: gdy sieć nie działa albo serwery
+    nie odpowiadają w budżecie czasu (szkoły z zablokowanym internetem). */
+function onlineFirst(
+  req: RunRequest,
+  promises: Array<Promise<RunResult>>,
+  budgetMs: number,
+  fallback: (req: RunRequest) => Promise<RunResult>,
+  fallbackNote: string,
+): Promise<RunResult> {
   return new Promise<RunResult>((resolve, reject) => {
     let settled = false;
     const goOffline = () => {
       if (settled) return;
       settled = true;
-      offline.run(req).then(
-        (r) => resolve({ ...r, note: t('run.fallbackOffline') }),
+      fallback(req).then(
+        (r) => resolve({ ...r, note: fallbackNote }),
         (err) => reject(err),
       );
     };
@@ -105,19 +113,21 @@ function onlineFirst(req: RunRequest, promises: Array<Promise<RunResult>>, budge
   });
 }
 
-/** Kod PHP bez znacznika <?php nie uruchomi się — dopisujemy go w tej samej linii,
-    żeby numeracja linii w błędach się zgadzała. */
-function ensurePhpOpenTag(code: string): string {
-  return /<\?(php|=)/i.test(code) ? code : `<?php ${code}`;
-}
-
 export async function runProgram(req: RunRequest): Promise<RunResult> {
   if (req.signal.aborted) throw new DOMException('stopped', 'AbortError');
 
-  // PHP: tylko przez internet (Piston) — lokalny silnik C++ go nie obsługuje
+  // PHP: online (Piston + Wandbox) zawsze pierwsze; awaryjnie prawdziwe PHP
+  // lokalnie w przeglądarce (php-wasm) — wtedy działa nawet bez internetu.
   if (req.language === 'php') {
+    const phpReq: RunRequest = { ...req, code: ensurePhpOpenTag(req.code) };
     try {
-      return await piston.run({ ...req, code: ensurePhpOpenTag(req.code) });
+      return await onlineFirst(
+        phpReq,
+        [piston.run(phpReq), wandbox.run(phpReq)],
+        12000,
+        phpLocal.run,
+        t('run.fallbackLocalPhp'),
+      );
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') throw err;
       return {
@@ -145,7 +155,13 @@ export async function runProgram(req: RunRequest): Promise<RunResult> {
   }
 
   // Auto: prawdziwy g++ online zawsze pierwszy; lokalny silnik tylko awaryjnie
-  return await onlineFirst(req, [godbolt.run(req), wandbox.run(req), piston.run(req)], 12000);
+  return await onlineFirst(
+    req,
+    [godbolt.run(req), wandbox.run(req), piston.run(req)],
+    12000,
+    offline.run,
+    t('run.fallbackOffline'),
+  );
 }
 
 /** Szybkie sprawdzenie, czy dany kompilator odpowiada z tej sieci. */

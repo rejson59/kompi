@@ -12,7 +12,7 @@ a gotową pracę wysyłasz nauczycielowi jednym linkiem. Działa w przeglądarce
 | | |
 |---|---|
 | ▶️ **Uruchamianie kodu** | **Najpierw prawdziwy kompilator online** (Piston → Compiler Explorer → Wandbox). Tryb offline w przeglądarce (podstawy C++) włącza się tylko awaryjnie — gdy internet nie działa albo szkoła blokuje serwery. |
-| 🐘 **C++ albo PHP** | Przełącznik języka przy tytule kodu. PHP uruchamia się przez internet (Piston) i nie przechodzi recenzji Kompiego (ta zna C++). |
+| 🐘 **C++ albo PHP** | Przełącznik języka przy tytule kodu. PHP działa zawsze: najpierw serwery online (Wandbox / Piston), a gdy nie odpowiadają — prawdziwe PHP 8.4 lokalnie w przeglądarce (WebAssembly), nawet bez internetu. Recenzja Kompiego dotyczy tylko C++. |
 | ⌨️ **Edytor** | Kolorowanie składni, numery linii, zwijanie bloków, szukanie (`Ctrl+F`), komentowanie (`Ctrl+/`), podkreślanie błędów kompilatora w kodzie. |
 | 💡 **Autouzupełnianie** | Podpowiedzi podczas pisania (zatwierdzasz **Tab**), gotowe wzorce (`for`, `if`, `main`, `cout`…) i nazwy Twoich własnych zmiennych. Można wyłączyć w ustawieniach. |
 | 📖 **Słowniczek** | Ikona książki z pytajnikiem. Wpisujesz, czego nie rozumiesz (np. „pętla”, „tablica”, „cout”) i dostajesz krótkie wyjaśnienie prostym językiem + przykład do wklejenia. Działa też po najechaniu myszką na słowo w kodzie. |
@@ -62,13 +62,16 @@ npm run build    # gotowa strona ląduje w katalogu dist/
 ## Jak to działa w środku
 
 - **Frontend:** Vite + TypeScript, edytor [CodeMirror 6](https://codemirror.net/), zero frameworków.
-- **Kompilacja online:** publiczne API [Piston](https://github.com/engineer-man/piston),
-  [Compiler Explorer](https://godbolt.org/) i [Wandbox](https://wandbox.org/) — zawsze pierwsze
-  w kolejności, ostatnio działające idzie na początek listy. PHP jeździ przez Piston.
+- **Kompilacja online:** publiczne API [Wandbox](https://wandbox.org/) i [Compiler Explorer](https://godbolt.org/)
+  oraz [Piston](https://github.com/engineer-man/piston) — zawsze pierwsze w kolejności.
+  Uwaga: publiczne API Piston od lutego 2026 wymaga klucza autoryzacyjnego, dlatego
+  C++ i PHP korzystają głównie z Wandboxa, a Piston startuje w wyścigu jako uzupełnienie.
 - **Tryb offline:** [JSCPP](https://github.com/felixhao28/JSCPP) uruchamiany w Web Workerze
   (osobny wątek, więc nieskończona pętla nie zawiesza strony) — **tylko awaryjnie**, gdy serwery
   online nie odpowiadają, bo bywa błędny. Obsługuje `iostream`, `cmath`,
   `cstring`, `cstdio`, zmienne, tablice, pętle, warunki i funkcje — bez `string`, `vector` i klas.
+- **PHP lokalnie:** prawdziwe PHP 8.4 w WebAssembly ([php-wasm](https://github.com/seanmorris/php-wasm))
+  w Web Workerze — awaryjny silnik dla PHP, gdy serwery online nie odpowiadają (działa też offline).
 - **Linki:** kod jest pakowany (LZ-String) do adresu po `#`, więc nigdy nie trafia na żaden serwer.
   „Skróć link” korzysta z darmowych schowków w sieci, a gdy żaden nie działa — zostaje pełny link.
 
